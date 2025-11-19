@@ -1,17 +1,21 @@
+// File: auth-service/server.js
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { parse } from 'graphql'; // <--- 1. IMPORT PARSE
 
-import { typeDefs } from './type.js';     
-import { resolvers } from './resolvers.js'; 
-import User from './models/User.js'; // <-- Sudah diperbaiki!
+import SubgraphPkg from '@apollo/subgraph';
+const { buildSubgraphSchema } = SubgraphPkg;
+
+import { typeDefs } from './type.js';
+import { resolvers } from './resolvers.js';
+import User from './models/User.js'; 
 
 dotenv.config();
 
 const connectDB = async () => {
   try {
-    // Pastikan MONGO_URI sudah di-set di .env file
     await mongoose.connect(process.env.MONGO_URI);
     console.log(`✅ Auth DB Connected: ${mongoose.connection.host}`);
   } catch (err) {
@@ -23,7 +27,13 @@ const connectDB = async () => {
 const startApp = async () => {
   await connectDB();
 
-  const server = new ApolloServer({ typeDefs, resolvers });
+  const server = new ApolloServer({
+    // 2. BUNGKUS typeDefs DENGAN parse()
+    schema: buildSubgraphSchema({ 
+      typeDefs: parse(typeDefs), 
+      resolvers 
+    }),
+  });
 
   const { url } = await startStandaloneServer(server, {
     listen: { port: parseInt(process.env.PORT) || 4001 },

@@ -1,0 +1,17 @@
+{
+  "name": "api-gateway",
+  "version": "1.0.0",
+  "description": "Apollo Federation Gateway",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "nodemon server.js"
+  },
+  "dependencies": {
+    "@apollo/gateway": "^2.7.2",  
+    "@apollo/server": "^4.10.0",
+    "dotenv": "^16.4.0",
+    "graphql": "^16.8.0",
+    "nodemon": "^3.0.0"
+  }
+}

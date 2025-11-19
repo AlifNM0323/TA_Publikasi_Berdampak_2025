@@ -1,17 +1,20 @@
+// File: admin-service-v2/server.js
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { parse } from 'graphql'; // <--- 1. KITA BUTUH INI
+
+import SubgraphPkg from '@apollo/subgraph';
+const { buildSubgraphSchema } = SubgraphPkg;
 
 import { typeDefs } from './type.js';
 import { resolvers } from './resolvers.js';
 
 dotenv.config();
 
-// Koneksi Database
 const connectDB = async () => {
   try {
-    // Hanya mengandalkan variabel ENV yang di-set Docker
     const conn = await mongoose.connect(process.env.MONGO_URI);
     console.log(`✅ MongoDB Terkoneksi: ${conn.connection.host}`);
   } catch (err) {
@@ -20,13 +23,15 @@ const connectDB = async () => {
   }
 };
 
-// Jalankan Server
 const startApp = async () => {
   await connectDB();
 
   const server = new ApolloServer({
-    typeDefs,
-    resolvers,
+    // 2. DISINI PERUBAHANNYA: Kita bungkus typeDefs dengan parse()
+    schema: buildSubgraphSchema({ 
+      typeDefs: parse(typeDefs), 
+      resolvers 
+    }),
   });
 
   const { url } = await startStandaloneServer(server, {
