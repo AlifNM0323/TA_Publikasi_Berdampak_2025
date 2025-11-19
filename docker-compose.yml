@@ -1,0 +1,62 @@
+services:
+  # --- DATABASE SERVICES ---
+  
+  # Database untuk Admin-Service
+  db-admin:
+    image: mongo:latest
+    container_name: db-admin-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-admin-data:/data/db
+    networks:
+      - rt-network
+
+  # Database untuk Health-Service
+  db-health:
+    image: mongo:latest
+    container_name: db-health-mongo
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo-health-data:/data/db
+    networks:
+      - rt-network
+
+  # Database untuk Env-Service
+  db-env:
+    image: mongo:latest
+    container_name: db-env-mongo
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo-env-data:/data/db
+    networks:
+      - rt-network
+
+  # Database untuk Pencarian Cerdas (SUDAH DIPERBAIKI)
+  elasticsearch:
+    image: elasticsearch:8.5.3
+    container_name: elasticsearch-db
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elastic-data:/usr/share/elasticsearch/data
+    networks:
+      - rt-network
+
+# Jaringan internal agar semua service bisa "berbicara"
+networks:
+  rt-network:
+    driver: bridge
+
+# TAMBAHKAN BAGIAN BARU INI DI PALING BAWAH
+volumes:
+  mongo-admin-data:
+  mongo-health-data:
+  mongo-env-data:
+  elastic-data:
