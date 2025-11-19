@@ -1,137 +1,109 @@
-const { gql } = require('apollo-server'); // Atau 'apollo-server-express'
+export const typeDefs = `#graphql
+  # --- DEFINISI DATA ---
+  
+  type Family {
+    id: ID!
+    kepalaKeluarga: String!
+    noKK: String!
+    address: String
+    ownershipStatus: String
+    members: [Citizen]
+    payments: [Contribution]
+  }
 
-const typeDefs = gql`
-  # 1. Bentuk Data Citizen sesuai Model Mongoose
   type Citizen {
-    id: ID!                 # _id dari MongoDB
-    citizen_id: String
-    family_id: String
-    contribution_id: String
-    name: String
-    nik: String
+    id: ID!
+    familyId: ID!
+    name: String!
+    nik: String!
     gender: String
     religion: String
-    address: String
     profession: String
-    place_of_birth: String
-    date_of_birth: String   # Kita gunakan String (ISO format) untuk tanggal agar simpel
+    address: String
+    family: Family
+    healthData: Health
+    trashTransactions: [TrashBank]
+    trashBalance: Float
+    # Relasi Baru: List Asuransi yang dimiliki warga
+    insurances: [Insurance] 
   }
 
-  # 2. Query (Pengganti GET)
+  type Health {
+    id: ID!
+    citizenId: ID!
+    bloodType: String
+    height: Float
+    weight: Float
+    chronicDisease: String
+    disabilityStatus: Boolean
+    lastCheckupDate: String
+    citizen: Citizen
+  }
+
+  type Contribution {
+    id: ID!
+    familyId: ID!
+    type: String!
+    amount: Int!
+    paymentDate: String
+    notes: String
+    family: Family
+  }
+
+  type TrashBank {
+    id: ID!
+    citizenId: ID!
+    txnDate: String
+    trashType: String!
+    weightKg: Float!
+    pricePerKg: Float!
+    deposit: Int
+    withdrawal: Int
+    operator: String
+    citizen: Citizen
+  }
+
+  # --- TIPE BARU: ASURANSI ---
+  type Insurance {
+    id: ID!
+    citizenId: ID!
+    insuranceType: String!
+    insuranceNumber: String!
+    activeStatus: Boolean
+    # Relasi: Lihat pemilik asuransi
+    citizen: Citizen
+  }
+
+  # --- QUERY ---
   type Query {
-    citizens: [Citizen]           # Get All
-    citizen(id: ID!): Citizen     # Get One by ID
+    # ... Queries lama biarkan sama ...
+    families: [Family]
+    citizens: [Citizen]
+    getAllHealthRecords: [Health]
+    getAllContributions: [Contribution]
+    getAllTrashTransactions: [TrashBank]
+    
+    # Query Baru
+    getInsurancesByCitizenId(citizenId: ID!): [Insurance]
   }
 
-  # 3. Mutation (Pengganti POST, PUT, DELETE)
+  # --- MUTATION ---
   type Mutation {
-    addCitizen(
-      citizen_id: String
-      family_id: String
-      contribution_id: String
-      name: String
-      nik: String!
-      gender: String
-      religion: String
-      address: String
-      profession: String
-      place_of_birth: String
-      date_of_birth: String
-    ): Citizen
-
-    updateCitizen(
-      id: ID!
-      name: String
-      nik: String
-      gender: String
-      religion: String
-      address: String
-      profession: String
-      place_of_birth: String
-      date_of_birth: String
-    ): Citizen
-
+    # ... Mutation lama biarkan sama ...
+    createFamily(kepalaKeluarga: String!, noKK: String!, address: String, ownershipStatus: String): Family
+    addCitizen(familyId: ID!, name: String!, nik: String!, gender: String, religion: String, address: String, profession: String, placeOfBirth: String, dateOfBirth: String): Citizen
+    updateCitizen(id: ID!, name: String, profession: String): Citizen
     deleteCitizen(id: ID!): String
+    addHealthRecord(citizenId: ID!, bloodType: String, height: Float, weight: Float, chronicDisease: String, disabilityStatus: Boolean, lastCheckupDate: String): Health
+    payContribution(familyId: ID!, type: String!, amount: Int!, notes: String): Contribution
+    addTrashDeposit(citizenId: ID!, trashType: String!, weightKg: Float!, pricePerKg: Float!, operator: String): TrashBank
+
+    # Insurance (BARU)
+    addInsurance(
+      citizenId: ID!
+      insuranceType: String!
+      insuranceNumber: String!
+      activeStatus: Boolean
+    ): Insurance
   }
 `;
-
-
-const Citizen = require('./models/Citizen'); // Import model Anda
-
-const resolvers = {
-  Query: {
-    // READ: Menampilkan semua citizen
-    citizens: async () => {
-      try {
-        const data = await Citizen.find();
-        return data;
-      } catch (err) {
-        throw new Error(err.message);
-      }
-    },
-
-    // READ: Menampilkan citizen berdasarkan ID
-    citizen: async (_, args) => {
-      try {
-        const data = await Citizen.findById(args.id);
-        if (!data) throw new Error('Citizen tidak ditemukan');
-        return data;
-      } catch (err) {
-        throw new Error(err.message);
-      }
-    },
-  },
-
-  Mutation: {
-    // CREATE: Menambahkan citizen baru
-    addCitizen: async (_, args) => {
-      // Logika cek NIK dari kode Express Anda
-      const existingCitizen = await Citizen.findOne({ nik: args.nik });
-      if (existingCitizen) {
-        throw new Error('NIK sudah terdaftar, silakan gunakan NIK yang berbeda');
-      }
-
-      const newCitizen = new Citizen({
-        ...args // Mengambil semua input dari args
-      });
-
-      try {
-        const res = await newCitizen.save();
-        return res; // GraphQL akan otomatis memetakan _id ke id
-      } catch (err) {
-        throw new Error(err.message);
-      }
-    },
-
-    // UPDATE: Memperbarui citizen
-    updateCitizen: async (_, args) => {
-      const { id, ...updates } = args; // Pisahkan ID dari data update
-
-      try {
-        const updatedCitizen = await Citizen.findByIdAndUpdate(
-          id,
-          updates,
-          { new: true } // Return data terbaru
-        );
-        
-        if (!updatedCitizen) throw new Error('Citizen tidak ditemukan');
-        return updatedCitizen;
-      } catch (err) {
-        throw new Error(err.message);
-      }
-    },
-
-    // DELETE: Menghapus citizen
-    deleteCitizen: async (_, args) => {
-      try {
-        const deletedCitizen = await Citizen.findByIdAndDelete(args.id);
-        if (!deletedCitizen) throw new Error('Citizen tidak ditemukan');
-        return "Citizen berhasil dihapus";
-      } catch (err) {
-        throw new Error(err.message);
-      }
-    },
-  },
-};
-
-module.exports = { typeDefs, resolvers };

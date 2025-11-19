@@ -1,36 +1,39 @@
-import express from 'express';
-import { ApolloServer } from 'apollo-server-express';
+import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
 
-// Definisikan skema GraphQL
-const typeDefs = `
-  type Query {
-    hello: String
+import { typeDefs } from './type.js';
+import { resolvers } from './resolvers.js';
+
+dotenv.config();
+
+// Koneksi Database
+const connectDB = async () => {
+  try {
+    // Hanya mengandalkan variabel ENV yang di-set Docker
+    const conn = await mongoose.connect(process.env.MONGO_URI);
+    console.log(`✅ MongoDB Terkoneksi: ${conn.connection.host}`);
+  } catch (err) {
+    console.error(`❌ Gagal Konek DB: ${err.message}`);
+    process.exit(1);
   }
-`;
-
-const resolvers = {
-  Query: {
-    hello: () => 'Hello, Apollo Server!',
-  },
 };
 
-// Inisialisasi Express app
-const app = express();
+// Jalankan Server
+const startApp = async () => {
+  await connectDB();
 
-// Inisialisasi Apollo Server
-const server = new ApolloServer({ typeDefs, resolvers });
-
-// Mulai Apollo Server di port 4000
-server.start().then(() => {
-  server.applyMiddleware({ app, path: '/graphql' });
-
-  // Menjalankan Express di port 3000
-  app.listen(3000, () => {
-    console.log('Server Express berjalan di http://localhost:3000');
+  const server = new ApolloServer({
+    typeDefs,
+    resolvers,
   });
 
-  // Menjalankan Apollo Server di port 4000
-  app.listen(4000, () => {
-    console.log('Apollo Server berjalan di http://localhost:4000/graphql');
+  const { url } = await startStandaloneServer(server, {
+    listen: { port: 4000 },
   });
-});
+
+  console.log(`🚀 Server RT Admin siap di: ${url}`);
+};
+
+startApp();
