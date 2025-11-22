@@ -3,7 +3,7 @@ import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import { parse } from 'graphql'; // <--- 1. KITA BUTUH INI
+import { parse } from 'graphql';
 
 import SubgraphPkg from '@apollo/subgraph';
 const { buildSubgraphSchema } = SubgraphPkg;
@@ -27,7 +27,7 @@ const startApp = async () => {
   await connectDB();
 
   const server = new ApolloServer({
-    // 2. DISINI PERUBAHANNYA: Kita bungkus typeDefs dengan parse()
+    
     schema: buildSubgraphSchema({ 
       typeDefs: parse(typeDefs), 
       resolvers 

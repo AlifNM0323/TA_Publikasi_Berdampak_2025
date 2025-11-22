@@ -1,9 +1,9 @@
-// File: auth-service/server.js
+
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import { parse } from 'graphql'; // <--- 1. IMPORT PARSE
+import { parse } from 'graphql';
 
 import SubgraphPkg from '@apollo/subgraph';
 const { buildSubgraphSchema } = SubgraphPkg;
@@ -28,7 +28,7 @@ const startApp = async () => {
   await connectDB();
 
   const server = new ApolloServer({
-    // 2. BUNGKUS typeDefs DENGAN parse()
+    
     schema: buildSubgraphSchema({ 
       typeDefs: parse(typeDefs), 
       resolvers 
