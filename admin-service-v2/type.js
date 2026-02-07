@@ -1,119 +1,5 @@
-// export const typeDefs = `#graphql
-//   # --- DEFINISI DATA ---
-  
-//   type Family {
-//     id: ID!
-//     kepalaKeluarga: String!
-//     noKK: String!
-//     address: String
-//     ownershipStatus: String
-//     members: [Citizen]
-//     payments: [Contribution]
-//   }
-
-//   type Citizen {
-//     id: ID!
-//     familyId: ID!
-//     name: String!
-//     nik: String!
-//     gender: String
-//     religion: String
-//     profession: String
-//     address: String
-//     family: Family
-//     healthData: Health
-//     trashTransactions: [TrashBank]
-//     trashBalance: Float
-//     # Relasi Baru: List Asuransi yang dimiliki warga
-//     insurances: [Insurance] 
-//   }
-
-//   type Health {
-//     id: ID!
-//     citizenId: ID!
-//     bloodType: String
-//     height: Float
-//     weight: Float
-//     chronicDisease: String
-//     disabilityStatus: Boolean
-//     lastCheckupDate: String
-//     citizen: Citizen
-//   }
-
-//   type Contribution {
-//     id: ID!
-//     familyId: ID!
-//     type: String!
-//     amount: Int!
-//     paymentDate: String
-//     notes: String
-//     family: Family
-//   }
-
-//   type TrashBank {
-//     id: ID!
-//     citizenId: ID!
-//     txnDate: String
-//     trashType: String!
-//     weightKg: Float!
-//     pricePerKg: Float!
-//     deposit: Int
-//     withdrawal: Int
-//     operator: String
-//     citizen: Citizen
-//   }
-
-//   # --- TIPE BARU: ASURANSI ---
-//   type Insurance {
-//     id: ID!
-//     citizenId: ID!
-//     insuranceType: String!
-//     insuranceNumber: String!
-//     activeStatus: Boolean
-//     # Relasi: Lihat pemilik asuransi
-//     citizen: Citizen
-//   }
-
-//   # --- QUERY ---
-//   type Query {
-//     # ... Queries lama biarkan sama ...
-//     families: [Family]
-//     citizens: [Citizen]
-//     getAllHealthRecords: [Health]
-//     getAllContributions: [Contribution]
-//     getAllTrashTransactions: [TrashBank]
-    
-//     # Query Baru
-//     getInsurancesByCitizenId(citizenId: ID!): [Insurance]
-//   }
-
-//   # --- MUTATION ---
-//   type Mutation {
-//     # ... Mutation lama biarkan sama ...
-//     createFamily(kepalaKeluarga: String!, noKK: String!, address: String, ownershipStatus: String): Family
-//     addCitizen(familyId: ID!, name: String!, nik: String!, gender: String, religion: String, address: String, profession: String, placeOfBirth: String, dateOfBirth: String): Citizen
-//     updateCitizen(id: ID!, name: String, profession: String): Citizen
-//     deleteCitizen(id: ID!): String
-//     addHealthRecord(citizenId: ID!, bloodType: String, height: Float, weight: Float, chronicDisease: String, disabilityStatus: Boolean, lastCheckupDate: String): Health
-//     payContribution(familyId: ID!, type: String!, amount: Int!, notes: String): Contribution
-//     addTrashDeposit(citizenId: ID!, trashType: String!, weightKg: Float!, pricePerKg: Float!, operator: String): TrashBank
-
-//     # Insurance (BARU)
-//     addInsurance(
-//       citizenId: ID!
-//       insuranceType: String!
-//       insuranceNumber: String!
-//       activeStatus: Boolean
-//     ): Insurance
-//   }
-// `;
-
-
-
-// File: type.js
 export const typeDefs = `#graphql
-  # --- DEFINISI DATA (TYPES) ---
-  
+  # --- 1. DEFINISI DATA UTAMA ---
   type Family {
     id: ID!
     kepalaKeluarga: String!
@@ -133,23 +19,34 @@ export const typeDefs = `#graphql
     religion: String
     profession: String
     address: String
+    placeOfBirth: String
+    dateOfBirth: String
+    relationship: String 
     family: Family
     healthData: Health
-    trashTransactions: [TrashBank]
-    trashBalance: Float
+    healthHistory: [Health]
     insurances: [Insurance] 
   }
 
+  # --- 2. DEFINISI DATA KESEHATAN & STATS ---
   type Health {
     id: ID!
     citizenId: ID!
+    citizen: Citizen 
+    healthStatus: String
     bloodType: String
     height: Float
     weight: Float
     chronicDisease: String
+    notes: String
     disabilityStatus: Boolean
-    lastCheckupDate: String
-    citizen: Citizen
+    createdAt: String
+  }
+
+  # Tipe data baru untuk grafik Pie Chart
+  type HealthStats {
+    status: String!
+    count: Int!
   }
 
   type Contribution {
@@ -159,20 +56,6 @@ export const typeDefs = `#graphql
     amount: Int!
     paymentDate: String
     notes: String
-    family: Family
-  }
-
-  type TrashBank {
-    id: ID!
-    citizenId: ID!
-    txnDate: String
-    trashType: String!
-    weightKg: Float!
-    pricePerKg: Float!
-    deposit: Int
-    withdrawal: Int
-    operator: String
-    citizen: Citizen
   }
 
   type Insurance {
@@ -181,46 +64,64 @@ export const typeDefs = `#graphql
     insuranceType: String!
     insuranceNumber: String!
     activeStatus: Boolean
-    citizen: Citizen
   }
 
-  # --- QUERY (Untuk Mengambil Data) ---
+  type OCRResponse {
+    nik: String
+    nama: String
+    rawText: String
+    success: Boolean
+    message: String
+  }
+
+  # --- 3. QUERY (PENGAMBILAN DATA) ---
   type Query {
     families: [Family]
     citizens: [Citizen]
-    getAllHealthRecords: [Health]
-    getAllContributions: [Contribution]
-    getAllTrashTransactions: [TrashBank]
-    
-    # Query Detail (By ID)
     citizen(id: ID!): Citizen
     getFamilyById(id: ID!): Family
-    getInsurancesByCitizenId(citizenId: ID!): [Insurance]
+    getAllHealthRecords: [Health]
+    getAllContributions: [Contribution]
+    # Query baru untuk statistik grafik
+    getHealthStats: [HealthStats]
   }
 
-  # --- MUTATION (Untuk Mengubah Data) ---
+  # --- 4. MUTATION (PERUBAHAN DATA) ---
   type Mutation {
-    # Keluarga
     createFamily(kepalaKeluarga: String!, noKK: String!, address: String, ownershipStatus: String): Family
-    
-    # Warga
-    addCitizen(familyId: ID!, name: String!, nik: String!, gender: String, religion: String, address: String, profession: String, placeOfBirth: String, dateOfBirth: String): Citizen
-    updateCitizen(id: ID!, name: String, profession: String): Citizen
-    
-    # 👇 FITUR HAPUS (INI YANG KITA PERBAIKI)
-    deleteCitizen(id: ID!): String
-    
-    # Kesehatan & Lainnya
-    addHealthRecord(citizenId: ID!, bloodType: String, height: Float, weight: Float, chronicDisease: String, disabilityStatus: Boolean, lastCheckupDate: String): Health
-    payContribution(familyId: ID!, type: String!, amount: Int!, notes: String): Contribution
-    addTrashDeposit(citizenId: ID!, trashType: String!, weightKg: Float!, pricePerKg: Float!, operator: String): TrashBank
+    updateFamily(id: ID!, kepalaKeluarga: String, noKK: String, address: String, ownershipStatus: String): Family
+    deleteFamily(id: ID!): String
 
-    # Asuransi
-    addInsurance(
-      citizenId: ID!
-      insuranceType: String!
-      insuranceNumber: String!
-      activeStatus: Boolean
-    ): Insurance
+    addCitizen(
+      familyId: ID!, name: String!, nik: String!, gender: String!, 
+      religion: String!, address: String!, profession: String!, 
+      placeOfBirth: String!, dateOfBirth: String!, relationship: String
+    ): Citizen
+    updateCitizen(id: ID!, name: String, profession: String, relationship: String): Citizen
+    deleteCitizen(id: ID!): String
+
+    addHealthRecord(
+      citizenId: ID!, 
+      healthStatus: String, 
+      bloodType: String, 
+      height: Float, 
+      weight: Float, 
+      chronicDisease: String, 
+      notes: String, 
+      disabilityStatus: Boolean
+    ): Health
+
+    updateHealthRecord(
+      id: ID!, 
+      healthStatus: String, 
+      bloodType: String, 
+      notes: String
+    ): Health
+
+    deleteHealthRecord(id: ID!): String
+
+    payContribution(familyId: ID!, type: String!, amount: Int!, notes: String): Contribution
+    addInsurance(citizenId: ID!, insuranceType: String!, insuranceNumber: String!, activeStatus: Boolean): Insurance
+    processOCR(imageBase64: String!): OCRResponse
   }
 `;
