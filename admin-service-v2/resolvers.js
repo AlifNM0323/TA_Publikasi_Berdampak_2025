@@ -4,6 +4,15 @@ import Family from './models/Family.js';
 import Health from './models/Health.js';
 import Contribution from './models/Contribution.js';
 import Insurance from './models/Insurance.js';
+import TrashBank from './models/TrashBank.js';
+
+// KONFIGURASI HARGA (Bisa diubah sesuai kebijakan RT)
+const PRICE_LIST = {
+  'Plastik': 3000,       // Rp 3.000 / kg
+  'Kertas/Kardus': 2000, // Rp 2.000 / kg
+  'Logam/Besi': 5000,    // Rp 5.000 / kg
+  'Kaca': 1000           // Rp 1.000 / kg
+};
 
 export const resolvers = {
   Query: {
@@ -16,28 +25,139 @@ export const resolvers = {
       return await Health.find().sort({ createdAt: -1 });
     },
 
-    // --- LOGIKA STATISTIK GRAFIK (BARU) ---
+    // --- LOGIKA STATISTIK LENGKAP ---
+    sampahStats: async () => {
+      try {
+        const families = await Family.find();
+        // Hitung total berat
+        const totalBerat = families.reduce((sum, f) => sum + (f.totalTabungan || 0), 0);
+        // Hitung total uang yang dipegang warga
+        const totalUang = families.reduce((sum, f) => sum + (f.balance || 0), 0);
+        // Hitung KK aktif
+        const totalKKAktif = families.filter(f => (f.totalTabungan || 0) > 0).length;
+        
+        return { totalBerat, totalKKAktif, totalUang };
+      } catch (error) { throw new Error(error.message); }
+    },
+
+    allTrashLogs: async () => {
+      return await TrashBank.find().sort({ txnDate: -1 });
+    },
+
     getHealthStats: async () => {
       try {
         const stats = await Health.aggregate([
-          {
-            $group: {
-              _id: "$healthStatus", // Group berdasarkan field healthStatus
-              count: { $sum: 1 }     // Hitung totalnya
-            }
-          }
+          { $group: { _id: "$healthStatus", count: { $sum: 1 } } }
         ]);
-        
-        // Map hasil MongoDB (_id) ke format GraphQL (status)
         return stats.map(s => ({
           status: s._id || "UNKNOWN",
           count: s.count
         }));
       } catch (error) { throw new Error(error.message); }
+    },
+
+    // FITUR SCAN QR
+    getFamilyByQR: async (_, { qrCode }) => {
+      const family = await Family.findOne({ qrCode });
+      if (!family) throw new Error("QR Code tidak valid / Keluarga tidak ditemukan");
+      return family;
     }
   },
 
   Mutation: {
+    // --- 1. SETOR SAMPAH (UANG MASUK / DEBIT) ---
+    addSetoranSampah: async (_, { citizenId, berat, kategori }) => {
+      try {
+        // A. Cari Data
+        const citizen = await Citizen.findById(citizenId);
+        if (!citizen) throw new Error("Warga tidak ditemukan");
+        
+        const family = await Family.findById(citizen.familyId);
+        if (!family) throw new Error("Keluarga tidak ditemukan");
+
+        // B. Hitung Uang
+        const price = PRICE_LIST[kategori] || 0;
+        const moneyEarned = berat * price;
+        const currentBalance = family.balance || 0;
+        const newBalance = currentBalance + moneyEarned;
+
+        // C. Simpan Ledger (DEBIT)
+        const newEntry = new TrashBank({
+          familyId: citizen.familyId,
+          depositorName: citizen.name,
+          trashType: kategori,
+          weight: berat,
+          pricePerKg: price,
+          debit: moneyEarned,   // Uang Masuk
+          credit: 0,
+          balance: newBalance,  // Saldo setelah transaksi
+          status: "SUCCESS"
+        });
+        const savedEntry = await newEntry.save();
+
+        // D. Update Keluarga ($inc berat dan balance)
+        await Family.findByIdAndUpdate(citizen.familyId, {
+          $inc: { 
+            totalTabungan: berat, 
+            balance: moneyEarned 
+          }
+        });
+
+        return { ...savedEntry._doc, id: savedEntry._id };
+      } catch (error) { throw new Error(error.message); }
+    },
+
+    // --- 2. PENCAIRAN DANA (UANG KELUAR / CREDIT) ---
+    withdrawFund: async (_, { familyId, amount }) => {
+      try {
+        const family = await Family.findById(familyId);
+        if (!family) throw new Error("Keluarga tidak ditemukan");
+
+        // Cek Saldo Cukup?
+        if (family.balance < amount) {
+          throw new Error(`Saldo tidak cukup! Sisa saldo: Rp ${family.balance}`);
+        }
+
+        const newBalance = family.balance - amount;
+
+        // Simpan Ledger (CREDIT)
+        const withdrawalEntry = new TrashBank({
+          familyId: familyId,
+          depositorName: family.kepalaKeluarga, // Yang ambil biasanya KK
+          trashType: 'PENCAIRAN_DANA',
+          weight: 0,
+          pricePerKg: 0,
+          debit: 0,
+          credit: amount,       // Uang Keluar
+          balance: newBalance,
+          status: "SUCCESS"
+        });
+        const savedEntry = await withdrawalEntry.save();
+
+        // Potong Saldo Keluarga
+        await Family.findByIdAndUpdate(familyId, {
+          $inc: { balance: -amount }
+        });
+
+        return { ...savedEntry._doc, id: savedEntry._id };
+      } catch (error) { throw new Error(error.message); }
+    },
+
+    updateFamilyWaste: async (_, { familyId, totalTabungan }) => {
+      try {
+        return await Family.findByIdAndUpdate(familyId, { totalTabungan }, { new: true });
+      } catch (error) { throw new Error(error.message); }
+    },
+
+    deleteFamilyWaste: async (_, { familyId }) => {
+      try {
+        // Reset Berat & Saldo jadi 0
+        await Family.findByIdAndUpdate(familyId, { totalTabungan: 0, balance: 0 });
+        return "Tabungan keluarga berhasil direset.";
+      } catch (error) { throw new Error(error.message); }
+    },
+
+    // --- MUTASI LAINNYA ---
     processOCR: async (_, { imageBase64 }) => {
       try {
         const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
@@ -72,7 +192,6 @@ export const resolvers = {
       try {
         const existing = await Citizen.findOne({ nik: args.nik });
         if (existing) throw new Error('NIK sudah terdaftar!');
-
         let finalStatus = args.relationship;
         if (args.relationship === "ANAK") {
           const count = await Citizen.countDocuments({
@@ -86,29 +205,22 @@ export const resolvers = {
     },
 
     updateCitizen: async (_, { id, ...updates }) => {
-      try {
-        return await Citizen.findByIdAndUpdate(id, updates, { new: true });
+      try { return await Citizen.findByIdAndUpdate(id, updates, { new: true });
       } catch (error) { throw new Error(error.message); }
     },
 
     addHealthRecord: async (_, args) => {
-      try {
-        const newRecord = new Health(args);
-        return await newRecord.save();
+      try { return await new Health(args).save();
       } catch (error) { throw new Error(error.message); }
     },
 
     updateHealthRecord: async (_, { id, ...updates }) => {
-      try {
-        const updated = await Health.findByIdAndUpdate(id, updates, { new: true });
-        return updated;
+      try { return await Health.findByIdAndUpdate(id, updates, { new: true });
       } catch (error) { throw new Error(error.message); }
     },
 
     deleteHealthRecord: async (_, { id }) => {
-      try {
-        await Health.findByIdAndDelete(id);
-        return "Data pemeriksaan berhasil dihapus.";
+      try { await Health.findByIdAndDelete(id); return "Data pemeriksaan berhasil dihapus.";
       } catch (error) { throw new Error(error.message); }
     },
 
@@ -123,9 +235,18 @@ export const resolvers = {
     deleteCitizen: async (_, { id }) => {
       await Citizen.findByIdAndDelete(id);
       return "Data warga berhasil dihapus.";
+    },
+
+    payContribution: async (_, args) => {
+      return await new Contribution(args).save();
+    },
+
+    addInsurance: async (_, args) => {
+      return await new Insurance(args).save();
     }
   },
 
+  // --- FIELD RESOLVERS ---
   Family: {
     members: async (parent) => await Citizen.find({ familyId: parent.id }),
     payments: async (parent) => await Contribution.find({ familyId: parent.id })
@@ -137,10 +258,9 @@ export const resolvers = {
     insurances: async (parent) => await Insurance.find({ citizenId: parent.id })
   },
   Health: {
-    citizen: async (parent) => {
-      const id = parent.citizenId;
-      if (id && id.name) return id; 
-      return await Citizen.findById(id);
-    }
+    citizen: async (parent) => await Citizen.findById(parent.citizenId)
+  },
+  TrashBank: {
+    family: async (parent) => await Family.findById(parent.familyId)
   }
 };
