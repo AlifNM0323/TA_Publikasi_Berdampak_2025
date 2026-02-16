@@ -1,57 +1,54 @@
-// File: api-gateway/server.js
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
-import { ApolloGateway, IntrospectAndCompose } from '@apollo/gateway';
-import dotenv from 'dotenv';
+import { ApolloGateway, IntrospectAndCompose, RemoteGraphQLDataSource } from '@apollo/gateway';
 
-dotenv.config();
+// 1. Class untuk meneruskan Header (Penting agar Token & Header Ngrok sampai ke Microservices)
+class AuthenticatedDataSource extends RemoteGraphQLDataSource {
+  willSendRequest({ request, context }) {
+    if (context.headers) {
+      // Teruskan semua header dari context Frontend ke subgraphs
+      Object.keys(context.headers).forEach((key) => {
+        request.http.headers.set(key, context.headers[key]);
+      });
+    }
+  }
+}
 
-// 1. Konfigurasi Gateway (Gabungin Auth & Admin)
+// 2. Konfigurasi Gateway
 const gateway = new ApolloGateway({
   supergraphSdl: new IntrospectAndCompose({
     subgraphs: [
-      { name: 'auth', url: 'http://localhost:4001/' },
-      { name: 'admin', url: 'http://localhost:4000/' },
+      { name: 'auth', url: 'http://localhost:4001/graphql' }, 
+      { name: 'admin', url: 'http://localhost:4000/graphql' },
     ],
   }),
+  buildService({ url }) {
+    return new AuthenticatedDataSource({ url });
+  },
 });
 
-// 2. Instance Server
-const server = new ApolloServer({
-  gateway,
-});
+// 3. Instance Apollo Server
+const server = new ApolloServer({ gateway });
 
-// 3. Jalankan Server
+// 4. Membungkus Server dalam fungsi startGateway agar bisa dipanggil
 const startGateway = async () => {
   try {
     const { url } = await startStandaloneServer(server, {
-      listen: { 
-        port: parseInt(process.env.PORT) || 4002 
-      },
-      
-      // --- CORS CONFIGURATION (PENTING BUAT FRONTEND) ---
+      listen: { port: 4002 },
       cors: {
-        origin: [
-          "http://localhost:3000",       // Frontend React Default
-          "http://127.0.0.1:3000",       // Frontend IP
-          "https://studio.apollographql.com" // Apollo Sandbox
-        ],
+        origin: "*", // Izinkan sementara untuk mempermudah testing
         credentials: true,
-        allowedHeaders: ["Content-Type", "Authorization"],
-        methods: ["GET", "POST", "OPTIONS"],
+        // Mendukung header khusus Ngrok dan Authorization
+        allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
       },
-
-      // --- CONTEXT (PENTING BUAT TOKEN) ---
-      // Meneruskan headers (termasuk token) dari Frontend ke Service di bawahnya
       context: async ({ req }) => ({ headers: req.headers }),
     });
 
     console.log(`🚀 API GATEWAY siap di: ${url}`);
-    console.log(`(Routing ke Admin:4000, Auth:4001)`);
-    
   } catch (error) {
-    console.error("❌ Gagal menjalankan Gateway:", error);
+    console.error("❌ Gagal menjalankan Gateway:", error.message);
   }
 };
 
+// 5. Jalankan fungsi
 startGateway();
