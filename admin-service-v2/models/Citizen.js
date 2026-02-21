@@ -9,17 +9,17 @@ const citizenSchema = new mongoose.Schema({
   name: { 
     type: String, 
     required: true,
-    trim: true // Menghapus spasi berlebih di awal/akhir nama
+    trim: true 
   },
   nik: {
     type: String,
     required: true,
-    unique: true, // Mencegah NIK ganda di database
+    unique: true, 
     trim: true
   },
   gender: {
     type: String,
-    enum: ['L', 'P'], // Pastikan Pian mengirim 'L' atau 'P' dari Frontend
+    enum: ['L', 'P'], 
     required: true,
   },
   religion: { 
@@ -39,15 +39,25 @@ const citizenSchema = new mongoose.Schema({
     required: true 
   },
   dateOfBirth: { 
-    type: Date, // Mongoose otomatis mengubah string "YYYY-MM-DD" dari FE menjadi Date object
+    type: Date, 
     required: true 
   },
   relationship: { 
     type: String, 
-    default: "LAINNYA" // Akan diisi "Anak 1", "Istri", dll oleh Resolver
-  }, 
+    default: "LAINNYA" 
+  },
+  phone: { 
+    type: String, 
+    default: "" 
+  },
+  insurance: { 
+    type: String, 
+    // Disesuaikan dengan pilihan di Frontend Datawarga.js
+    enum: ['BPJS Mandiri', 'BPJS dari Pekerjaan', 'KIS', 'Asuransi Swasta', 'Asuransi Swasta Lainnya', 'Tidak Ada'],
+    default: 'Tidak Ada'
+  },
 }, { 
-  timestamps: true // Otomatis mencatat createdAt dan updatedAt
+  timestamps: true 
 }); 
 
 export default mongoose.model('Citizen', citizenSchema);

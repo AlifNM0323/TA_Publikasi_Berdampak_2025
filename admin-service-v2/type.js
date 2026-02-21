@@ -7,7 +7,7 @@ export const typeDefs = `#graphql
     address: String
     ownershipStatus: String
     totalTabungan: Float  # Total Berat (Kg)
-    balance: Float        # Total Uang (Rp)
+    balance: Float         # Total Uang (Rp)
     qrCode: String
     members: [Citizen]
     payments: [Contribution]
@@ -25,10 +25,14 @@ export const typeDefs = `#graphql
     placeOfBirth: String
     dateOfBirth: String
     relationship: String 
+    
+    # --- TAMBAHAN FIELD BARU AGAR TEMBUS KE FE ---
+    phone: String      
+    insurance: String  
+    
     family: Family
     healthData: Health
     healthHistory: [Health]
-    insurances: [Insurance] 
   }
 
   # --- 2. DEFINISI BANK SAMPAH ---
@@ -53,7 +57,7 @@ export const typeDefs = `#graphql
     totalUang: Float
   }
 
-  # --- 3. DEFINISI LAINNYA ---
+  # --- 3. DEFINISI KESEHATAN (TERMASUK IBU HAMIL) ---
   type Health {
     id: ID!
     citizenId: ID!
@@ -65,6 +69,12 @@ export const typeDefs = `#graphql
     chronicDisease: String
     notes: String
     disabilityStatus: Boolean
+    
+    # --- FIELD BARU UNTUK FITUR IBU HAMIL ---
+    isPregnant: Boolean
+    hpl: String
+    pregnancyNotes: String
+    
     createdAt: String
   }
 
@@ -80,14 +90,6 @@ export const typeDefs = `#graphql
     amount: Int!
     paymentDate: String
     notes: String
-  }
-
-  type Insurance {
-    id: ID!
-    citizenId: ID!
-    insuranceType: String!
-    insuranceNumber: String!
-    activeStatus: Boolean
   }
 
   type OCRResponse {
@@ -127,8 +129,21 @@ export const typeDefs = `#graphql
     updateFamily(id: ID!, kepalaKeluarga: String, noKK: String, address: String, ownershipStatus: String): Family
     deleteFamily(id: ID!): String
 
-    # Warga / Anggota Keluarga
-    addCitizen(familyId: ID!, name: String!, nik: String!, gender: String!, religion: String!, address: String!, profession: String!, placeOfBirth: String!, dateOfBirth: String!, relationship: String): Citizen
+    # Warga / Anggota Keluarga (Update argumen phone & insurance)
+    addCitizen(
+      familyId: ID!, 
+      name: String!, 
+      nik: String!, 
+      gender: String!, 
+      religion: String!, 
+      address: String!, 
+      profession: String!, 
+      placeOfBirth: String!, 
+      dateOfBirth: String!, 
+      relationship: String,
+      phone: String,
+      insurance: String
+    ): Citizen
     
     updateCitizen(
       id: ID!, 
@@ -139,18 +154,32 @@ export const typeDefs = `#graphql
       profession: String, 
       placeOfBirth: String, 
       dateOfBirth: String, 
-      relationship: String
+      relationship: String,
+      phone: String,
+      insurance: String
     ): Citizen
 
     deleteCitizen(id: ID!): String
 
-    # Kesehatan & Lainnya
-    addHealthRecord(citizenId: ID!, healthStatus: String, bloodType: String, height: Float, weight: Float, chronicDisease: String, notes: String, disabilityStatus: Boolean): Health
+    # Kesehatan (Update argumen Ibu Hamil)
+    addHealthRecord(
+      citizenId: ID!, 
+      healthStatus: String, 
+      bloodType: String, 
+      height: Float, 
+      weight: Float, 
+      chronicDisease: String, 
+      notes: String, 
+      disabilityStatus: Boolean,
+      isPregnant: Boolean,
+      hpl: String,
+      pregnancyNotes: String
+    ): Health
+
     updateHealthRecord(id: ID!, healthStatus: String, bloodType: String, notes: String): Health
     deleteHealthRecord(id: ID!): String
 
     payContribution(familyId: ID!, type: String!, amount: Int!, notes: String): Contribution
-    addInsurance(citizenId: ID!, insuranceType: String!, insuranceNumber: String!, activeStatus: Boolean): Insurance
     processOCR(imageBase64: String!): OCRResponse
     
     updateFamilyWaste(familyId: ID!, totalTabungan: Float!): Family
