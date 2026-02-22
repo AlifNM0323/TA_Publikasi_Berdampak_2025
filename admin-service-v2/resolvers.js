@@ -2,24 +2,43 @@ import Tesseract from 'tesseract.js';
 import Citizen from './models/Citizen.js';
 import Family from './models/Family.js';
 import Health from './models/Health.js';
-import Contribution from './models/Contribution.js';
-import Insurance from './models/Insurance.js';
 import TrashBank from './models/TrashBank.js';
-
-const PRICE_LIST = {
-  'Plastik': 3000,
-  'Kertas/Kardus': 2000,
-  'Logam/Besi': 5000,
-  'Kaca': 1000
-};
+import Schedule from './models/Schedule.js';
+import Contribution from './models/Contribution.js';
+import Expense from './models/Expense.js';
 
 export const resolvers = {
   Query: {
     families: async () => await Family.find(),
-    citizens: async () => await Citizen.find(),
+    citizens: async () => await Citizen.find(), // Bisa difilter di FE berdasarkan statusWarga
     citizen: async (_, { id }) => await Citizen.findById(id),
     getFamilyById: async (_, { id }) => await Family.findById(id),
     getAllHealthRecords: async () => await Health.find().sort({ createdAt: -1 }),
+    getSchedules: async () => await Schedule.find().sort({ date: 1 }),
+
+    // --- QUERY IURAN & KAS ---
+    getAllContributions: async () => await Contribution.find().populate('familyId'),
+    getContributionsByPeriod: async (_, { month, year }) => await Contribution.find({ month, year }),
+    getAllExpenses: async () => await Expense.find().sort({ date: -1 }),
+    
+    getKasSummary: async (_, { month, year }) => {
+      try {
+        const allIn = await Contribution.find();
+        const allOut = await Expense.find();
+        const totalFamily = await Family.countDocuments();
+        const paidThisMonth = await Contribution.countDocuments({ month, year });
+
+        const totalIn = allIn.reduce((sum, item) => sum + item.amount, 0);
+        const totalOut = allOut.reduce((sum, item) => sum + item.amount, 0);
+
+        return {
+          totalIn,
+          totalOut,
+          balance: totalIn - totalOut,
+          paidPercentage: totalFamily > 0 ? (paidThisMonth / totalFamily) * 100 : 0
+        };
+      } catch (e) { throw new Error(e.message); }
+    },
 
     sampahStats: async () => {
       try {
@@ -50,156 +69,188 @@ export const resolvers = {
   },
 
   Mutation: {
-    // --- BANK SAMPAH ---
-    addSetoranSampah: async (_, { citizenId, berat, kategori }) => {
+    // --- MUTASI WARGA ---
+    mutateCitizen: async (_, { id, statusWarga, keteranganMutasi }) => {
+      try {
+        const updated = await Citizen.findByIdAndUpdate(
+          id,
+          { 
+            $set: { 
+              statusWarga, 
+              keteranganMutasi, 
+              tanggalMutasi: new Date().toISOString() 
+            } 
+          },
+          { new: true }
+        );
+        return updated;
+      } catch (error) { throw new Error("Gagal mutasi: " + error.message); }
+    },
+
+    // --- ALGORITMA BANK SAMPAH PINTAR ---
+    addTrashDeposit: async (_, { citizenId, trashType, weight, pricePerKg }) => {
       try {
         const citizen = await Citizen.findById(citizenId);
         if (!citizen) throw new Error("Warga tidak ditemukan");
         const family = await Family.findById(citizen.familyId);
-        if (!family) throw new Error("Keluarga tidak ditemukan");
+        if (!family) throw new Error("Data Keluarga tidak ditemukan");
 
-        const price = PRICE_LIST[kategori] || 0;
-        const moneyEarned = berat * price;
+        const moneyEarned = Math.round(weight * pricePerKg);
         const newBalance = (family.balance || 0) + moneyEarned;
 
-        const newEntry = new TrashBank({
-          familyId: citizen.familyId, depositorName: citizen.name, trashType: kategori,
-          weight: berat, pricePerKg: price, debit: moneyEarned, credit: 0, balance: newBalance, status: "SUCCESS"
+        const newLog = new TrashBank({
+          familyId: citizen.familyId,
+          citizenId: citizen.id,
+          depositorName: citizen.name,
+          trashType: trashType,
+          weight: weight,
+          pricePerKg: pricePerKg,
+          debit: moneyEarned,
+          credit: 0,
+          balance: newBalance,
+          status: "SUCCESS",
+          txnDate: new Date().toISOString()
         });
-        const savedEntry = await newEntry.save();
+        const savedLog = await newLog.save();
 
         await Family.findByIdAndUpdate(citizen.familyId, {
-          $inc: { totalTabungan: berat, balance: moneyEarned }
+          $inc: { 
+            totalTabungan: weight, 
+            balance: moneyEarned 
+          }
         });
 
-        return { ...savedEntry._doc, id: savedEntry._id };
-      } catch (error) { throw new Error(error.message); }
+        return savedLog;
+      } catch (error) { throw new Error("BE_ERROR: " + error.message); }
     },
 
     withdrawFund: async (_, { familyId, amount }) => {
-      try {
         const family = await Family.findById(familyId);
-        if (!family) throw new Error("Keluarga tidak ditemukan");
-        if (family.balance < amount) throw new Error(`Saldo tidak cukup! Sisa: ${family.balance}`);
-
-        const newBalance = family.balance - amount;
+        if (family.balance < amount) throw new Error(`Saldo tidak cukup!`);
+        
         const withdrawalEntry = new TrashBank({
-          familyId: familyId, depositorName: family.kepalaKeluarga, trashType: 'PENCAIRAN_DANA',
-          weight: 0, pricePerKg: 0, debit: 0, credit: amount, balance: newBalance, status: "SUCCESS"
+          familyId, 
+          depositorName: family.kepalaKeluarga, 
+          trashType: 'PENCAIRAN_DANA',
+          weight: 0, pricePerKg: 0, debit: 0, credit: amount, 
+          balance: family.balance - amount, 
+          status: "SUCCESS",
+          txnDate: new Date().toISOString()
         });
-        const savedEntry = await withdrawalEntry.save();
-
+        
         await Family.findByIdAndUpdate(familyId, { $inc: { balance: -amount } });
-        return { ...savedEntry._doc, id: savedEntry._id };
-      } catch (error) { throw new Error(error.message); }
+        return await withdrawalEntry.save();
     },
 
-    // --- KELUARGA ---
-    createFamily: async (_, args) => {
+    deleteTrashLog: async (_, { id }) => {
+      await TrashBank.findByIdAndDelete(id);
+      return "Log berhasil dihapus";
+    },
+
+    payContribution: async (_, args) => {
+      const newEntry = new Contribution({
+        ...args,
+        paymentDate: new Date().toISOString()
+      });
+      return await newEntry.save();
+    },
+
+    addExpense: async (_, args) => {
+      const newExp = new Expense({
+        ...args,
+        date: new Date().toISOString()
+      });
+      return await newExp.save();
+    },
+
+    deleteExpense: async (_, { id }) => {
+      await Expense.findByIdAndDelete(id);
+      return "Pengeluaran berhasil dihapus";
+    },
+
+    addHealthRecord: async (_, args) => {
       try {
-        const existing = await Family.findOne({ noKK: args.noKK });
-        if (existing) throw new Error('Nomor KK sudah terdaftar!');
-        return await new Family(args).save();
-      } catch (error) { throw new Error(error.message); }
+        const newRecord = new Health({
+          ...args,
+          hpl: args.hpl ? new Date(args.hpl) : null
+        });
+        return await newRecord.save();
+      } catch (error) { throw new Error("Gagal simpan: " + error.message); }
     },
 
-    updateFamily: async (_, { id, ...updates }) => {
+    updateHealthRecord: async (_, { id, ...updates }) => {
       try {
-        return await Family.findByIdAndUpdate(id, updates, { new: true });
-      } catch (error) { throw new Error(error.message); }
+        const dataToUpdate = { ...updates };
+        if (updates.hpl) dataToUpdate.hpl = new Date(updates.hpl);
+        else if (updates.hpl === "") dataToUpdate.hpl = null;
+
+        const updated = await Health.findByIdAndUpdate(id, { $set: dataToUpdate }, { new: true });
+        if (!updated) throw new Error("Data riwayat tidak ditemukan!");
+        return updated;
+      } catch (error) { throw new Error("BE_ERROR: " + error.message); }
     },
 
-    deleteFamily: async (_, { id }) => {
-      try {
-        await Citizen.deleteMany({ familyId: id });
-        await Family.findByIdAndDelete(id);
-        return "Keluarga berhasil dihapus";
-      } catch (error) { throw new Error(error.message); }
+    deleteHealthRecord: async (_, { id }) => { 
+      await Health.findByIdAndDelete(id); 
+      return "Hapus sukses"; 
     },
 
-    // --- WARGA / CITIZEN (Mendukung Phone & Insurance) ---
     addCitizen: async (_, args) => {
       try {
         const existing = await Citizen.findOne({ nik: args.nik });
         if (existing) throw new Error('NIK sudah terdaftar!');
         
-        let finalStatus = args.relationship;
-        if (args.relationship === "ANAK") {
+        let rel = args.relationship ? args.relationship.toUpperCase() : 'LAINNYA';
+        if (rel === 'ANAK') {
           const count = await Citizen.countDocuments({ familyId: args.familyId, relationship: { $regex: /^Anak/i } });
-          finalStatus = `Anak ${count + 1}`;
+          args.relationship = `Anak ${count + 1}`;
         }
-        return await new Citizen({ ...args, relationship: finalStatus }).save();
+        return await new Citizen(args).save();
       } catch (error) { throw new Error(error.message); }
     },
 
-    updateCitizen: async (_, { id, ...updates }) => {
-      try {
-        const updated = await Citizen.findByIdAndUpdate(id, updates, { new: true });
-        if (!updated) throw new Error("Warga tidak ditemukan");
-        return updated;
-      } catch (error) { throw new Error("Gagal update warga: " + error.message); }
+    updateCitizen: async (_, { id, ...updates }) => await Citizen.findByIdAndUpdate(id, updates, { new: true }),
+    deleteCitizen: async (_, { id }) => { await Citizen.findByIdAndDelete(id); return "Terhapus"; },
+
+    createFamily: async (_, args) => await new Family(args).save(),
+    updateFamily: async (_, { id, ...updates }) => await Family.findByIdAndUpdate(id, updates, { new: true }),
+    deleteFamily: async (_, { id }) => {
+      await Citizen.deleteMany({ familyId: id });
+      await Family.findByIdAndDelete(id);
+      return "Keluarga berhasil dihapus";
     },
 
-    deleteCitizen: async (_, { id }) => {
-      try {
-        await Citizen.findByIdAndDelete(id);
-        return "Data warga berhasil dihapus.";
-      } catch (error) { throw new Error(error.message); }
+    addSchedule: async (_, args) => {
+        const newSchedule = new Schedule({ ...args, date: new Date(args.date) });
+        return await newSchedule.save();
     },
-
-    // --- KESEHATAN (Mendukung Ibu Hamil) ---
-    addHealthRecord: async (_, args) => {
-      try {
-        const newRecord = new Health({
-          ...args,
-          createdAt: new Date().toISOString()
-        });
-        return await newRecord.save();
-      } catch (error) { throw new Error(error.message); }
-    },
-
-    updateHealthRecord: async (_, { id, ...upd }) => Health.findByIdAndUpdate(id, upd, { new: true }),
-    deleteHealthRecord: async (_, { id }) => { await Health.findByIdAndDelete(id); return "Hapus sukses"; },
+    deleteSchedule: async (_, { id }) => { await Schedule.findByIdAndDelete(id); return "Terhapus"; },
 
     processOCR: async (_, { imageBase64 }) => {
       try {
         const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-        const imageBuffer = Buffer.from(base64Data, 'base64');
-        const { data: { text } } = await Tesseract.recognize(imageBuffer, 'ind');
+        const { data: { text } } = await Tesseract.recognize(Buffer.from(base64Data, 'base64'), 'ind');
         const nikMatch = text.match(/\d{12,16}/);
         return { nik: nikMatch ? nikMatch[0] : "Gagal", success: true, message: "OK" };
       } catch (e) { return { success: false, message: e.message }; }
-    },
-
-    payContribution: async (_, args) => new Contribution(args).save(),
-    addInsurance: async (_, args) => new Insurance(args).save()
+    }
   },
 
-  // --- FIELD RESOLVERS: KUNCI AGAR DATA SEEDER MUNCUL DI FE ---
   Family: {
-    members: async (parent) => {
-      // Menggunakan .toString() untuk memastikan ID cocok
-      return await Citizen.find({ familyId: parent.id.toString() });
-    },
-    payments: async (parent) => {
-      return await Contribution.find({ familyId: parent.id.toString() });
-    }
+    members: async (parent) => await Citizen.find({ familyId: parent.id }).sort({ createdAt: 1 }),
+    payments: async (parent) => await Contribution.find({ familyId: parent.id })
   },
   Citizen: {
-    family: async (parent) => {
-      return await Family.findById(parent.familyId);
-    },
-    healthData: async (parent) => {
-      return await Health.findOne({ citizenId: parent.id.toString() }).sort({ createdAt: -1 });
-    },
-    healthHistory: async (parent) => {
-      return await Health.find({ citizenId: parent.id.toString() }).sort({ createdAt: -1 });
+    family: async (parent) => await Family.findById(parent.familyId),
+    healthData: async (parent) => await Health.findOne({ citizenId: parent.id }).sort({ createdAt: -1 }),
+    healthHistory: async (parent) => await Health.find({ citizenId: parent.id }).sort({ createdAt: -1 }),
+    age: (parent) => {
+      if (!parent.dateOfBirth) return 0;
+      const dob = new Date(parent.dateOfBirth);
+      return Math.abs(new Date(Date.now() - dob.getTime()).getUTCFullYear() - 1970);
     }
   },
-  Health: { 
-    citizen: async (parent) => await Citizen.findById(parent.citizenId) 
-  },
-  TrashBank: { 
-    family: async (parent) => await Family.findById(parent.familyId) 
-  }
+  Health: { citizen: async (parent) => await Citizen.findById(parent.citizenId) },
+  TrashBank: { family: async (parent) => await Family.findById(parent.familyId) },
+  Contribution: { family: async (parent) => await Family.findById(parent.familyId) }
 };

@@ -48,14 +48,21 @@ const citizenSchema = new mongoose.Schema({
   },
   phone: { 
     type: String, 
-    default: "" 
+    default: "-" 
   },
   insurance: { 
     type: String, 
-    // Disesuaikan dengan pilihan di Frontend Datawarga.js
     enum: ['BPJS Mandiri', 'BPJS dari Pekerjaan', 'KIS', 'Asuransi Swasta', 'Asuransi Swasta Lainnya', 'Tidak Ada'],
     default: 'Tidak Ada'
   },
+  // --- TAMBAHAN UNTUK FITUR MUTASI ---
+  statusWarga: { 
+    type: String, 
+    enum: ['AKTIF', 'PINDAH', 'MENINGGAL'], 
+    default: 'AKTIF' 
+  },
+  tanggalMutasi: { type: Date },
+  keteranganMutasi: { type: String, default: "-" }
 }, { 
   timestamps: true 
 }); 

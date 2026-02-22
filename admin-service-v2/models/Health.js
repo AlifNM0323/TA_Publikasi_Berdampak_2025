@@ -5,7 +5,6 @@ const HealthSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Citizen',
     required: true,
-    unique: false, 
     index: true    
   },
   healthStatus: {
@@ -31,26 +30,21 @@ const HealthSchema = new mongoose.Schema({
   hpl: { type: Date, default: null }, 
   pregnancyNotes: { type: String, default: '-' },
 
-  checkupDate: { 
-    type: Date, 
-    default: Date.now 
-  }
 }, { timestamps: true });
-
-const Health = mongoose.model('Health', HealthSchema);
 
 // Membersihkan index unique lama agar 1 warga bisa punya banyak riwayat
 const dropOldIndex = async () => {
   try {
+    const Health = mongoose.model('Health');
     const indexes = await Health.collection.getIndexes();
     if (indexes.citizenId_1) {
       await Health.collection.dropIndex('citizenId_1');
-      console.log('✅ Index lama berhasil dihapus. Riwayat kesehatan kini bersifat multi-record.');
+      console.log('✅ BE: Index lama dihapus. Riwayat kini bersifat multi-record.');
     }
-  } catch (err) {
-    // Abaikan jika index sudah tidak ada
-  }
+  } catch (err) {}
 };
+
+const Health = mongoose.model('Health', HealthSchema);
 dropOldIndex();
 
 export default Health;
