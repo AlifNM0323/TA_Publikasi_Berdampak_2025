@@ -11,23 +11,17 @@ export const typeDefs = `#graphql
     user: User!
   }
 
+  type RegisterResponse {
+    success: Boolean!
+    message: String!
+  }
+
   type Query {
-    # Query untuk melihat daftar user (tanpa password)
     users: [User]
   }
 
   type Mutation {
-    # Mutasi untuk mendaftarkan user baru
-    register(
-      username: String!
-      password: String!
-      role: String
-    ): AuthPayload
-
-    # Mutasi untuk login Pak Ahmad Waluyo & warga
-    login(
-      username: String!
-      password: String!
-    ): AuthPayload
+    registerUser(username: String!, password: String!, role: String!): RegisterResponse
+    login(username: String!, password: String!): AuthPayload
   }
 `;

@@ -1,45 +1,27 @@
-
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { buildSubgraphSchema } from '@apollo/subgraph'; // <--- PASTIKAN INI SUBGRAPH
 import { parse } from 'graphql';
-
-import SubgraphPkg from '@apollo/subgraph';
-const { buildSubgraphSchema } = SubgraphPkg;
-
 import { typeDefs } from './type.js';
 import { resolvers } from './resolvers.js';
-import User from './models/User.js'; 
 
 dotenv.config();
 
-const connectDB = async () => {
+const startAuth = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
-    console.log(`✅ Auth DB Connected: ${mongoose.connection.host}`);
+    const server = new ApolloServer({
+      schema: buildSubgraphSchema({ typeDefs: parse(typeDefs), resolvers })
+    });
+
+    const { url } = await startStandaloneServer(server, {
+      listen: { port: 4002, host: '0.0.0.0' }, // <--- PORT 4002
+    });
+    console.log(`✅ Auth Service SiRT 14 SIAP di: ${url}`);
   } catch (err) {
-    console.error(`❌ Auth DB Error: ${err.message}`);
-    process.exit(1);
+    console.error("❌ Auth Gagal Start:", err.message);
   }
 };
-
-const startApp = async () => {
-  await connectDB();
-
-  const server = new ApolloServer({
-    
-    schema: buildSubgraphSchema({ 
-      typeDefs: parse(typeDefs), 
-      resolvers 
-    }),
-  });
-
-  const { url } = await startStandaloneServer(server, {
-    listen: { port: parseInt(process.env.PORT) || 4001 },
-  });
-
-  console.log(`🚀 AUTH SERVICE siap di: ${url}`);
-};
-
-startApp();
+startAuth();

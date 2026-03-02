@@ -33,6 +33,7 @@ export const typeDefs = `#graphql
     family: Family
     healthData: Health
     healthHistory: [Health]
+    reports: [Report]
   }
 
   type TrashBank {
@@ -118,12 +119,63 @@ export const typeDefs = `#graphql
     paidPercentage: Float
   }
 
-  type OCRResponse {
+  type OCRKtpResponse {
     nik: String
     nama: String
+    tempatLahir: String
+    tanggalLahir: String
+    jenisKelamin: String
+    golonganDarah: String
+    alamat: String
+    rtRw: String
+    agama: String
+    statusPerkawinan: String
+    pekerjaan: String
+    kewarganegaraan: String
     rawText: String
     success: Boolean
     message: String
+  }
+
+  type OCRKKResponse {
+    noKK: String
+    namaKepalaKeluarga: String
+    alamat: String
+    rtRw: String
+    desaKelurahan: String
+    kecamatan: String
+    kabupatenKota: String
+    provinsi: String
+    rawText: String
+    success: Boolean
+    message: String
+  }
+
+  type FamilyScanData {
+    id: ID
+    noKK: String
+    kepalaKeluarga: String
+    address: String
+    ownershipStatus: String
+  }
+
+  type ScanAllResponse {
+    success: Boolean!
+    message: String!
+    family: FamilyScanData
+  }
+
+  type Report {
+    id: ID!
+    citizenId: ID!
+    citizen: Citizen
+    category: String!
+    title: String!
+    description: String!
+    imageBase64: String
+    status: String
+    response: String
+    reportDate: String
   }
 
   type Query {
@@ -141,6 +193,8 @@ export const typeDefs = `#graphql
     sampahStats: SampahStats
     allTrashLogs: [TrashBank]
     getFamilyByQR(qrCode: String!): Family
+    getAllReports: [Report]
+    getReportsByCitizen(citizenId: ID!): [Report]
   }
 
   type Mutation {
@@ -153,10 +207,7 @@ export const typeDefs = `#graphql
     addCitizen(familyId: ID!, name: String!, nik: String!, gender: String!, religion: String!, address: String!, profession: String!, placeOfBirth: String!, dateOfBirth: String!, relationship: String, phone: String, insurance: String): Citizen
     updateCitizen(id: ID!, name: String, nik: String, gender: String, religion: String, profession: String, placeOfBirth: String, dateOfBirth: String, relationship: String, phone: String, insurance: String): Citizen
     deleteCitizen(id: ID!): String
-
-    # --- MUTATION BARU UNTUK MUTASI ---
     mutateCitizen(id: ID!, statusWarga: String!, keteranganMutasi: String): Citizen
-
     addHealthRecord(citizenId: ID!, healthStatus: String, bloodType: String, height: Float, weight: Float, bloodPressure: String, bloodSugar: Int, chronicDisease: String, notes: String, disabilityStatus: Boolean, isPregnant: Boolean, hpl: String, pregnancyNotes: String): Health
     updateHealthRecord(id: ID!, healthStatus: String, bloodType: String, height: Float, weight: Float, bloodPressure: String, bloodSugar: Int, notes: String, isPregnant: Boolean, hpl: String, pregnancyNotes: String): Health
     deleteHealthRecord(id: ID!): String
@@ -165,8 +216,13 @@ export const typeDefs = `#graphql
     payContribution(familyId: ID!, type: String!, amount: Int!, month: String!, year: String!, notes: String): Contribution
     addExpense(title: String!, category: String!, amount: Int!, notes: String): Expense
     deleteExpense(id: ID!): String
-    processOCR(imageBase64: String!): OCRResponse
     updateFamilyWaste(familyId: ID!, totalTabungan: Float!): Family
     deleteFamilyWaste(familyId: ID!): String
+    processKTP(imageBase64: String!): OCRKtpResponse
+    processKK(imageBase64: String!): OCRKKResponse
+    processScanAll(imageBase64: String!): ScanAllResponse!
+    createReport(citizenId: ID!, category: String!, title: String!, description: String!, imageBase64: String): Report
+    updateReportStatus(id: ID!, status: String!, response: String): Report
+    deleteReport(id: ID!): String
   }
 `;

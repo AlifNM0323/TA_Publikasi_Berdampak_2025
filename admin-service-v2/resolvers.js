@@ -1,4 +1,5 @@
 import Tesseract from 'tesseract.js';
+import sharp from 'sharp';
 import Citizen from './models/Citizen.js';
 import Family from './models/Family.js';
 import Health from './models/Health.js';
@@ -6,17 +7,17 @@ import TrashBank from './models/TrashBank.js';
 import Schedule from './models/Schedule.js';
 import Contribution from './models/Contribution.js';
 import Expense from './models/Expense.js';
+import Report from './models/Report.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const resolvers = {
   Query: {
-    families: async () => await Family.find(),
-    citizens: async () => await Citizen.find(), // Bisa difilter di FE berdasarkan statusWarga
+    families: async () => await Family.find().sort({ createdAt: -1 }),
+    citizens: async () => await Citizen.find().sort({ createdAt: -1 }),
     citizen: async (_, { id }) => await Citizen.findById(id),
     getFamilyById: async (_, { id }) => await Family.findById(id),
     getAllHealthRecords: async () => await Health.find().sort({ createdAt: -1 }),
     getSchedules: async () => await Schedule.find().sort({ date: 1 }),
-
-    // --- QUERY IURAN & KAS ---
     getAllContributions: async () => await Contribution.find().populate('familyId'),
     getContributionsByPeriod: async (_, { month, year }) => await Contribution.find({ month, year }),
     getAllExpenses: async () => await Expense.find().sort({ date: -1 }),
@@ -27,14 +28,10 @@ export const resolvers = {
         const allOut = await Expense.find();
         const totalFamily = await Family.countDocuments();
         const paidThisMonth = await Contribution.countDocuments({ month, year });
-
         const totalIn = allIn.reduce((sum, item) => sum + item.amount, 0);
         const totalOut = allOut.reduce((sum, item) => sum + item.amount, 0);
-
         return {
-          totalIn,
-          totalOut,
-          balance: totalIn - totalOut,
+          totalIn, totalOut, balance: totalIn - totalOut,
           paidPercentage: totalFamily > 0 ? (paidThisMonth / totalFamily) * 100 : 0
         };
       } catch (e) { throw new Error(e.message); }
@@ -65,29 +62,21 @@ export const resolvers = {
       const family = await Family.findOne({ qrCode });
       if (!family) throw new Error("QR Code tidak valid / Keluarga tidak ditemukan");
       return family;
-    }
+    },
+
+    getAllReports: async () => await Report.find().sort({ reportDate: -1 }),
+    getReportsByCitizen: async (_, { citizenId }) => await Report.find({ citizenId }).sort({ reportDate: -1 })
   },
 
   Mutation: {
-    // --- MUTASI WARGA ---
     mutateCitizen: async (_, { id, statusWarga, keteranganMutasi }) => {
       try {
-        const updated = await Citizen.findByIdAndUpdate(
-          id,
-          { 
-            $set: { 
-              statusWarga, 
-              keteranganMutasi, 
-              tanggalMutasi: new Date().toISOString() 
-            } 
-          },
-          { new: true }
+        return await Citizen.findByIdAndUpdate(
+          id, { $set: { statusWarga, keteranganMutasi, tanggalMutasi: new Date().toISOString() } }, { new: true }
         );
-        return updated;
       } catch (error) { throw new Error("Gagal mutasi: " + error.message); }
     },
 
-    // --- ALGORITMA BANK SAMPAH PINTAR ---
     addTrashDeposit: async (_, { citizenId, trashType, weight, pricePerKg }) => {
       try {
         const citizen = await Citizen.findById(citizenId);
@@ -99,43 +88,25 @@ export const resolvers = {
         const newBalance = (family.balance || 0) + moneyEarned;
 
         const newLog = new TrashBank({
-          familyId: citizen.familyId,
-          citizenId: citizen.id,
-          depositorName: citizen.name,
-          trashType: trashType,
-          weight: weight,
-          pricePerKg: pricePerKg,
-          debit: moneyEarned,
-          credit: 0,
-          balance: newBalance,
-          status: "SUCCESS",
-          txnDate: new Date().toISOString()
+          familyId: citizen.familyId, citizenId: citizen.id, depositorName: citizen.name,
+          trashType, weight, pricePerKg, debit: moneyEarned, credit: 0, balance: newBalance,
+          status: "SUCCESS", txnDate: new Date().toISOString()
         });
         const savedLog = await newLog.save();
-
-        await Family.findByIdAndUpdate(citizen.familyId, {
-          $inc: { 
-            totalTabungan: weight, 
-            balance: moneyEarned 
-          }
-        });
-
+        await Family.findByIdAndUpdate(citizen.familyId, { $inc: { totalTabungan: weight, balance: moneyEarned } });
         return savedLog;
       } catch (error) { throw new Error("BE_ERROR: " + error.message); }
     },
 
     withdrawFund: async (_, { familyId, amount }) => {
         const family = await Family.findById(familyId);
-        if (family.balance < amount) throw new Error(`Saldo tidak cukup!`);
+        if (!family) throw new Error("Keluarga tidak ditemukan");
+        if (family.balance < amount) throw new Error("Saldo tidak cukup kawan!");
         
         const withdrawalEntry = new TrashBank({
-          familyId, 
-          depositorName: family.kepalaKeluarga, 
-          trashType: 'PENCAIRAN_DANA',
-          weight: 0, pricePerKg: 0, debit: 0, credit: amount, 
-          balance: family.balance - amount, 
-          status: "SUCCESS",
-          txnDate: new Date().toISOString()
+          familyId, depositorName: family.kepalaKeluarga, trashType: 'PENCAIRAN_DANA',
+          weight: 0, pricePerKg: 0, debit: 0, credit: amount, balance: family.balance - amount, 
+          status: "SUCCESS", txnDate: new Date().toISOString()
         });
         
         await Family.findByIdAndUpdate(familyId, { $inc: { balance: -amount } });
@@ -147,72 +118,36 @@ export const resolvers = {
       return "Log berhasil dihapus";
     },
 
-    payContribution: async (_, args) => {
-      const newEntry = new Contribution({
-        ...args,
-        paymentDate: new Date().toISOString()
-      });
-      return await newEntry.save();
-    },
+    payContribution: async (_, args) => await new Contribution({ ...args, paymentDate: new Date().toISOString() }).save(),
+    addExpense: async (_, args) => await new Expense({ ...args, date: new Date().toISOString() }).save(),
+    deleteExpense: async (_, { id }) => { await Expense.findByIdAndDelete(id); return "Dihapus"; },
 
-    addExpense: async (_, args) => {
-      const newExp = new Expense({
-        ...args,
-        date: new Date().toISOString()
-      });
-      return await newExp.save();
-    },
-
-    deleteExpense: async (_, { id }) => {
-      await Expense.findByIdAndDelete(id);
-      return "Pengeluaran berhasil dihapus";
-    },
-
-    addHealthRecord: async (_, args) => {
-      try {
-        const newRecord = new Health({
-          ...args,
-          hpl: args.hpl ? new Date(args.hpl) : null
-        });
-        return await newRecord.save();
-      } catch (error) { throw new Error("Gagal simpan: " + error.message); }
-    },
-
+    addHealthRecord: async (_, args) => await new Health({ ...args, hpl: args.hpl ? new Date(args.hpl).toISOString() : null, createdAt: new Date().toISOString() }).save(),
+    
     updateHealthRecord: async (_, { id, ...updates }) => {
-      try {
-        const dataToUpdate = { ...updates };
-        if (updates.hpl) dataToUpdate.hpl = new Date(updates.hpl);
-        else if (updates.hpl === "") dataToUpdate.hpl = null;
-
-        const updated = await Health.findByIdAndUpdate(id, { $set: dataToUpdate }, { new: true });
-        if (!updated) throw new Error("Data riwayat tidak ditemukan!");
-        return updated;
-      } catch (error) { throw new Error("BE_ERROR: " + error.message); }
+      const dataToUpdate = { ...updates };
+      if (updates.hpl) dataToUpdate.hpl = new Date(updates.hpl).toISOString();
+      return await Health.findByIdAndUpdate(id, { $set: dataToUpdate }, { new: true });
     },
-
-    deleteHealthRecord: async (_, { id }) => { 
-      await Health.findByIdAndDelete(id); 
-      return "Hapus sukses"; 
-    },
+    
+    deleteHealthRecord: async (_, { id }) => { await Health.findByIdAndDelete(id); return "Hapus sukses"; },
 
     addCitizen: async (_, args) => {
-      try {
-        const existing = await Citizen.findOne({ nik: args.nik });
-        if (existing) throw new Error('NIK sudah terdaftar!');
-        
-        let rel = args.relationship ? args.relationship.toUpperCase() : 'LAINNYA';
-        if (rel === 'ANAK') {
-          const count = await Citizen.countDocuments({ familyId: args.familyId, relationship: { $regex: /^Anak/i } });
-          args.relationship = `Anak ${count + 1}`;
-        }
-        return await new Citizen(args).save();
-      } catch (error) { throw new Error(error.message); }
+      const existing = await Citizen.findOne({ nik: args.nik });
+      if (existing) throw new Error('NIK sudah terdaftar kawan!');
+      
+      let rel = args.relationship ? args.relationship.toUpperCase() : 'LAINNYA';
+      if (rel.includes('ANAK')) {
+        const count = await Citizen.countDocuments({ familyId: args.familyId, relationship: { $regex: /^Anak/i } });
+        args.relationship = `Anak ${count + 1}`;
+      }
+      return await new Citizen(args).save();
     },
 
     updateCitizen: async (_, { id, ...updates }) => await Citizen.findByIdAndUpdate(id, updates, { new: true }),
     deleteCitizen: async (_, { id }) => { await Citizen.findByIdAndDelete(id); return "Terhapus"; },
 
-    createFamily: async (_, args) => await new Family(args).save(),
+    createFamily: async (_, args) => await new Family({ ...args, createdAt: new Date().toISOString() }).save(),
     updateFamily: async (_, { id, ...updates }) => await Family.findByIdAndUpdate(id, updates, { new: true }),
     deleteFamily: async (_, { id }) => {
       await Citizen.deleteMany({ familyId: id });
@@ -220,20 +155,129 @@ export const resolvers = {
       return "Keluarga berhasil dihapus";
     },
 
-    addSchedule: async (_, args) => {
-        const newSchedule = new Schedule({ ...args, date: new Date(args.date) });
-        return await newSchedule.save();
-    },
+    addSchedule: async (_, args) => await new Schedule({ ...args, date: new Date(args.date).toISOString() }).save(),
     deleteSchedule: async (_, { id }) => { await Schedule.findByIdAndDelete(id); return "Terhapus"; },
 
-    processOCR: async (_, { imageBase64 }) => {
+    updateFamilyWaste: async (_, { familyId, totalTabungan }) => await Family.findByIdAndUpdate(familyId, { totalTabungan }, { new: true }),
+    deleteFamilyWaste: async (_, { familyId }) => { await Family.findByIdAndUpdate(familyId, { totalTabungan: 0, balance: 0 }); return "Reset Berhasil"; },
+
+    processKTP: async (_, { imageBase64 }) => {
       try {
         const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-        const { data: { text } } = await Tesseract.recognize(Buffer.from(base64Data, 'base64'), 'ind');
-        const nikMatch = text.match(/\d{12,16}/);
-        return { nik: nikMatch ? nikMatch[0] : "Gagal", success: true, message: "OK" };
-      } catch (e) { return { success: false, message: e.message }; }
-    }
+        const processedImageBuffer = await sharp(Buffer.from(base64Data, 'base64')).grayscale().linear(1.5, -(128 * 0.5)).normalize().toBuffer();
+        const { data: { text } } = await Tesseract.recognize(processedImageBuffer, 'ind');
+        
+        const nikMatch = text.match(/\b\d{16}\b/);
+        const namaMatch = text.match(/(?:Nama|Narna|Nema)\s*[:;]?\s*([A-Z\s\.\,]+)/i);
+        const ttlMatch = text.match(/(?:Tempat|Tahir|Lahir)\s*[:;]?\s*([A-Za-z\s]+)[\,\.]\s*(\d{2}\-\d{2}\-\d{4})/i);
+        const jkMatch = text.match(/(LAKI-LAKI|LAKI|PEREMPUAN)/i);
+        const agamaMatch = text.match(/(?:Agama|Agarna)\s*[:;]?\s*([A-Z]+)/i);
+        const alamatMatch = text.match(/(?:Alamat|Alarnat)\s*[:;]?\s*([^\n]+)/i);
+        const rtRwMatch = text.match(/RT\/RW\s*[:;]?\s*([\d]{3}\s*\/\s*[\d]{3})/i);
+
+        return { 
+          nik: nikMatch ? nikMatch[0] : "", 
+          nama: namaMatch ? namaMatch[1].replace(/[^A-Z\s]/g, '').trim() : "",
+          tempatLahir: ttlMatch ? ttlMatch[1].trim() : "", tanggalLahir: ttlMatch ? ttlMatch[2].trim() : "",
+          jenisKelamin: jkMatch ? (jkMatch[0].includes('LAKI') ? 'LAKI-LAKI' : 'PEREMPUAN') : "",
+          agama: agamaMatch ? agamaMatch[1].trim() : "", alamat: alamatMatch ? alamatMatch[1].trim() : "",
+          rtRw: rtRwMatch ? rtRwMatch[1].replace(/\s/g, '') : "",
+          rawText: text, success: true, message: "KTP berhasil diproses kawan!" 
+        };
+      } catch (e) { return { success: false, message: "Error OCR KTP: " + e.message }; }
+    },
+
+    processKK: async (_, { imageBase64 }) => {
+      try {
+        const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+        const processedImageBuffer = await sharp(Buffer.from(base64Data, 'base64')).grayscale().linear(1.6, -(128 * 0.6)).normalize().toBuffer();
+        const { data: { text } } = await Tesseract.recognize(processedImageBuffer, 'ind');
+        
+        const kkMatch = text.match(/\b\d{16}\b/); 
+        const namaKepalaMatch = text.match(/(?:Kepala Keluarga|Keluarga)\s*[:;]?\s*([A-Z\s\.\,]+)/i);
+        const alamatMatch = text.match(/(?:Alamat|Alarnat)\s*[:;]?\s*([^\n]+)/i);
+        const rtRwMatch = text.match(/RT\/RW\s*[:;]?\s*([\d]{3}\s*\/\s*[\d]{3})/i);
+
+        return { 
+          noKK: kkMatch ? kkMatch[0] : "", 
+          namaKepalaKeluarga: namaKepalaMatch ? namaKepalaMatch[1].replace(/[^A-Z\s]/g, '').trim() : "",
+          alamat: alamatMatch ? alamatMatch[1].trim() : "", rtRw: rtRwMatch ? rtRwMatch[1].replace(/\s/g, '') : "",
+          rawText: text, success: true, message: "Kartu Keluarga berhasil diproses!" 
+        };
+      } catch (e) { return { success: false, message: "Error OCR KK: " + e.message }; }
+    },
+
+    processScanAll: async (_, { imageBase64 }) => {
+      try {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey || apiKey === "KOSONG") throw new Error("API KEY belum ada kawan!");
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" }); 
+
+        const mimeMatch = imageBase64.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/);
+        const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+        const base64Data = imageBase64.replace(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/, "");
+
+        const prompt = "Ekstrak data KK/KTP ini ke JSON murni: { 'noKK': '16 digit', 'kepalaKeluarga': 'Nama', 'alamat': 'Jalan/Blok', 'rtRw': '000/000', 'members': [{ 'name': 'Nama', 'nik': '16 digit', 'gender': 'L/P', 'placeOfBirth': 'Kota', 'dateOfBirth': 'YYYY-MM-DD', 'religion': 'Agama', 'relationship': 'Role', 'profession': 'Kerja' }] }";
+
+        const result = await model.generateContent([
+          { inlineData: { data: base64Data, mimeType: mimeType } }, 
+          prompt
+        ]);
+
+        const responseText = result.response.text();
+        const cleanJson = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const extractedData = JSON.parse(cleanJson);
+
+        let family = await Family.findOne({ noKK: extractedData.noKK });
+        if (!family) {
+          family = await new Family({
+            noKK: extractedData.noKK || `DUMMY-${Date.now()}`,
+            kepalaKeluarga: extractedData.kepalaKeluarga || "TIDAK TERBACA",
+            address: `${extractedData.alamat || ""} RT/RW ${extractedData.rtRw || ""}`.trim(),
+            ownershipStatus: "OWNED",
+            createdAt: new Date().toISOString()
+          }).save();
+        }
+
+        if (extractedData.members) {
+          for (const m of extractedData.members) {
+            const exists = await Citizen.findOne({ nik: m.nik });
+            if (!exists) {
+              await new Citizen({
+                familyId: family._id, name: m.name, nik: m.nik, gender: m.gender || 'L',
+                religion: m.religion || 'Islam', placeOfBirth: m.placeOfBirth,
+                dateOfBirth: m.dateOfBirth, relationship: m.relationship,
+                profession: m.profession, address: family.address
+              }).save();
+            }
+          }
+        }
+
+        return { success: true, message: "Scan AI Berhasil kawan!", family: family };
+      } catch (error) {
+        return { success: false, message: "Gagal Scan AI: " + error.message, family: null };
+      }
+    },
+
+    createReport: async (_, args) => {
+      try {
+        const newReport = new Report({ ...args, reportDate: new Date().toISOString(), status: "PENDING" });
+        return await newReport.save();
+      } catch (error) { throw new Error("Gagal membuat laporan kawan: " + error.message); }
+    },
+
+    updateReportStatus: async (_, { id, status, response }) => {
+      try {
+        return await Report.findByIdAndUpdate(id, { $set: { status, response } }, { new: true });
+      } catch (error) { throw new Error("Gagal update laporan: " + error.message); }
+    },
+
+    deleteReport: async (_, { id }) => {
+      await Report.findByIdAndDelete(id);
+      return "Laporan berhasil dihapus.";
+    },
   },
 
   Family: {
@@ -244,13 +288,16 @@ export const resolvers = {
     family: async (parent) => await Family.findById(parent.familyId),
     healthData: async (parent) => await Health.findOne({ citizenId: parent.id }).sort({ createdAt: -1 }),
     healthHistory: async (parent) => await Health.find({ citizenId: parent.id }).sort({ createdAt: -1 }),
+    reports: async (parent) => await Report.find({ citizenId: parent.id }).sort({ reportDate: -1 }), 
     age: (parent) => {
       if (!parent.dateOfBirth) return 0;
       const dob = new Date(parent.dateOfBirth);
-      return Math.abs(new Date(Date.now() - dob.getTime()).getUTCFullYear() - 1970);
+      const diff = Date.now() - dob.getTime();
+      return Math.abs(new Date(diff).getUTCFullYear() - 1970);
     }
   },
   Health: { citizen: async (parent) => await Citizen.findById(parent.citizenId) },
   TrashBank: { family: async (parent) => await Family.findById(parent.familyId) },
-  Contribution: { family: async (parent) => await Family.findById(parent.familyId) }
+  Contribution: { family: async (parent) => await Family.findById(parent.familyId) },
+  Report: { citizen: async (parent) => await Citizen.findById(parent.citizenId) } 
 };

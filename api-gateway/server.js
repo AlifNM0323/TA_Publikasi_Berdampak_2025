@@ -1,60 +1,38 @@
 import { ApolloServer } from '@apollo/server';
-import { startStandaloneServer } from '@apollo/server/standalone';
-import { ApolloGateway, IntrospectAndCompose, RemoteGraphQLDataSource } from '@apollo/gateway';
+import { expressMiddleware } from '@apollo/server/express4';
+import { ApolloGateway, IntrospectAndCompose } from '@apollo/gateway';
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
 
-class AuthenticatedDataSource extends RemoteGraphQLDataSource {
-  willSendRequest({ request, context }) {
-    if (context.headers) {
-      Object.keys(context.headers).forEach((key) => {
-        if (key !== 'host' && key !== 'content-length') {
-          request.http.headers.set(key, context.headers[key]);
-        }
-      });
-    }
-  }
-}
-
-const gateway = new ApolloGateway({
-  supergraphSdl: new IntrospectAndCompose({
-    subgraphs: [
-      { name: 'auth', url: 'http://localhost:4001/graphql' }, 
-      { name: 'admin', url: 'http://localhost:4000/graphql' },
-    ],
-    pollIntervalInMs: 5000, 
-  }),
-  buildService({ url }) {
-    return new AuthenticatedDataSource({ url });
-  },
-});
-
-const server = new ApolloServer({ 
-  gateway,
-  includeStacktraceInErrorResponses: true, 
-});
+dotenv.config();
 
 const startGateway = async () => {
-  try {
-    const { url } = await startStandaloneServer(server, {
-      listen: { port: 4002 },
-      context: async ({ req }) => ({ headers: req.headers }),
-      cors: {
-        // --- KUNCI: Mengizinkan akses dari mana saja ---
-        origin: "*", 
-        credentials: true,
-        methods: ["GET", "POST", "OPTIONS"],
-        allowedHeaders: [
-          "Content-Type", 
-          "Authorization", 
-          "ngrok-skip-browser-warning",
-          "apollo-require-preflight"
-        ],
-      },
-    });
+  const gateway = new ApolloGateway({
+    supergraphSdl: new IntrospectAndCompose({
+      subgraphs: [
+        { name: 'auth', url: 'http://localhost:4002/graphql' }, 
+        { name: 'admin', url: 'http://localhost:4001/graphql' },
+      ],
+    }),
+  });
 
-    console.log(`🚀 API GATEWAY SIAP DI: ${url}`);
-  } catch (error) {
-    console.error("❌ Gagal menjalankan Gateway:", error.message);
-  }
+  const app = express();
+  const server = new ApolloServer({ gateway });
+
+  await server.start();
+
+  // FIX: Limit ditingkatkan ke 50MB agar Scan KK berhasil
+  app.use(
+    '/graphql',
+    cors(),
+    express.json({ limit: '50mb' }),
+    expressMiddleware(server)
+  );
+
+  app.listen(4000, '0.0.0.0', () => {
+    console.log(`🚀 API GATEWAY AKTIF di http://localhost:4000/graphql`);
+  });
 };
 
 startGateway();
