@@ -9,6 +9,7 @@
     "start": "nodemon server.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@apollo/server": "^4.10.0",
     "@apollo/subgraph": "^2.12.1",
     "@google/generative-ai": "^0.24.1",

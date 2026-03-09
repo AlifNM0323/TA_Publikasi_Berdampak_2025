@@ -15,47 +15,68 @@ mongoose.connect(process.env.MONGO_URI)
     process.exit(1);
   });
 
-// --- DATA NAMA & ALAMAT ---
 const firstNamesL = ["Budi", "Joko", "Asep", "Dedi", "Eko", "Agus", "Rudi", "Iwan", "Hendra", "Fajar", "Bayu", "Dimas", "Adi", "Reza", "Gilang", "Rian", "Dani", "Yusuf", "Ilham", "Rizky", "Slamet", "Bambang", "Suparman"];
 const firstNamesP = ["Siti", "Sri", "Rina", "Dewi", "Lina", "Ani", "Yuni", "Putri", "Indah", "Sari", "Maya", "Nur", "Ratna", "Wulan", "Dian", "Nisa", "Fitri", "Tia", "Eka", "Lilis", "Sumiyati", "Hartini"];
 const lastNames = ["Santoso", "Wijaya", "Saputra", "Hidayat", "Kusuma", "Pratama", "Siregar", "Utama", "Nugraha", "Permana", "Wibowo", "Setiawan", "Ramadhan", "Haryanto", "Gunawan", "Susanto", "Mulyana", "Subagja", "Firmansyah", "Nasution"];
 const streets = ["Jl. Melati", "Jl. Mawar", "Jl. Anggrek", "Jl. Kamboja", "Jl. Kenanga", "Jl. Flamboyan", "Jl. Dahlia", "Jl. Cempaka", "Gg. Buntu", "Gg. Masjid", "Jl. Merpati", "Jl. Elang"];
-
-// --- DATA ASURANSI BARU ---
 const insurances = ['BPJS Mandiri', 'BPJS dari Pekerjaan', 'KIS', 'Asuransi Swasta', 'Asuransi Swasta Lainnya', 'Tidak Ada'];
 
-// --- HELPER FUNCTIONS ---
+const generatedNIKs = new Set();
+const generatedNames = new Set();
+const generatedEmails = new Set();
+
 const getRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-// Generate NIK (16 digit)
-const generateNIK = (gender, yearCode) => {
-  const code = gender === 'L' ? '3201' : '3202';
-  const randomDigits = Math.floor(Math.random() * 10000000000).toString().padStart(10, '0');
-  return `${code}${yearCode}${randomDigits}`.substring(0, 16);
+const generateUniqueNIK = (gender, yearCode) => {
+  let nik;
+  do {
+    const code = gender === 'L' ? '3201' : '3202';
+    const randomDigits = Math.floor(Math.random() * 10000000000).toString().padStart(10, '0');
+    nik = `${code}${yearCode}${randomDigits}`.substring(0, 16);
+  } while (generatedNIKs.has(nik));
+  generatedNIKs.add(nik);
+  return nik;
 };
 
-// Generate No HP Random
-const generatePhone = () => {
-  return '08' + Math.floor(Math.random() * 10000000000).toString().substring(0, 10);
+const generateUniqueName = (gender) => {
+  let name;
+  let attempt = 0;
+  do {
+    const first = getRandom(gender === 'L' ? firstNamesL : firstNamesP);
+    const last = getRandom(lastNames);
+    name = attempt === 0 ? `${first} ${last}` : `${first} ${last} ${attempt}`;
+    attempt++;
+  } while (generatedNames.has(name));
+  generatedNames.add(name);
+  return name;
 };
 
-// --- FUNGSI PENTING: GENERATE TANGGAL LAHIR ---
-// Input: Umur (misal 5 tahun) -> Output: "2021-05-20"
+// GENERATE EMAIL OTOMATIS BERDASARKAN NAMA
+const generateUniqueEmail = (name) => {
+  let email;
+  let attempt = 0;
+  const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, ''); // Hapus spasi
+  do {
+    email = attempt === 0 ? `${cleanName}@warga.com` : `${cleanName}${attempt}@warga.com`;
+    attempt++;
+  } while (generatedEmails.has(email));
+  generatedEmails.add(email);
+  return email;
+};
+
+const generatePhone = () => '08' + Math.floor(Math.random() * 10000000000).toString().substring(0, 10);
+
 const generateDOBbyAge = (age) => {
-  const currentYear = 2026; // Tahun Sistem Saat Ini
+  const currentYear = 2026;
   const birthYear = currentYear - age;
-  
-  // Random Bulan (01-12) dan Tanggal (01-28)
   const month = getRandomInt(1, 12).toString().padStart(2, '0');
   const day = getRandomInt(1, 28).toString().padStart(2, '0');
-  
   return `${birthYear}-${month}-${day}`;
 };
 
 const importData = async () => {
   try {
-    // 1. BERSIHKAN DATA LAMA
     console.log('🧹 Menghapus data lama...'.yellow);
     await Family.deleteMany();
     await Citizen.deleteMany();
@@ -65,13 +86,10 @@ const importData = async () => {
     let citizens = [];
     let trashLogs = [];
     
-    console.log('🚀 Generating Data Lengkap (HP, Asuransi, Umur, Status Anak)...'.blue);
+    console.log('🚀 Generating Data Lengkap (Semua Warga Punya Email)...'.blue);
 
     for (let i = 0; i < 100; i++) {
-      // --- A. DATA KELUARGA ---
-      const firstName = getRandom(firstNamesL);
-      const lastName = getRandom(lastNames);
-      const kepalaKeluargaName = `${firstName} ${lastName}`;
+      const kepalaKeluargaName = generateUniqueName('L');
       const noKK = `3201${getRandomInt(1000, 9999)}${getRandomInt(1000, 9999)}${getRandomInt(1000, 9999)}`;
       const address = `${getRandom(streets)} No. ${getRandomInt(1, 150)}`;
       
@@ -91,85 +109,74 @@ const importData = async () => {
         qrCode: `RT14-${noKK}`
       });
 
-      // --- B. ANGGOTA KELUARGA ---
-      
-      // 1. KEPALA KELUARGA (AYAH)
-      // Umur antara 25 sampai 75 tahun
+      // 1. KEPALA KELUARGA (PASTI DAPAT EMAIL)
       const fatherAge = getRandomInt(25, 75);
-      const fatherDOB = generateDOBbyAge(fatherAge);
-
+      const fatherId = new mongoose.Types.ObjectId();
       citizens.push({
+        _id: fatherId, 
         familyId: familyId,
         name: kepalaKeluargaName,
-        nik: generateNIK('L', 99), 
+        nik: generateUniqueNIK('L', 99), 
         gender: 'L',
         religion: 'Islam',
         profession: fatherAge > 60 ? 'Pensiunan' : getRandom(['Wiraswasta', 'Buruh', 'PNS', 'Karyawan', 'Pedagang']),
         address: address,
         placeOfBirth: 'Bogor',
-        dateOfBirth: fatherDOB, 
-        relationship: 'KEPALA KELUARGA/SUAMI', // Penyesuaian Status Baru
-        phone: generatePhone(),                // Field HP
-        insurance: getRandom(insurances)       // Field Asuransi
+        dateOfBirth: generateDOBbyAge(fatherAge), 
+        relationship: 'KEPALA KELUARGA/SUAMI',
+        phone: generatePhone(),
+        email: generateUniqueEmail(kepalaKeluargaName),
+        insurance: getRandom(insurances)
       });
 
-      // 2. ISTRI (IBU)
-      const hasWife = Math.random() > 0.1; // 90% punya istri
-      if (hasWife) {
-        const motherAge = fatherAge - getRandomInt(0, 5);
-        const motherDOB = generateDOBbyAge(motherAge);
-        const wifeName = `${getRandom(firstNamesP)} ${getRandom(lastNames)}`;
-
+      // 2. ISTRI (PASTI DAPAT EMAIL)
+      if (Math.random() > 0.1) {
+        const wifeName = generateUniqueName('P');
+        const wifeId = new mongoose.Types.ObjectId();
         citizens.push({
+          _id: wifeId,
           familyId: familyId,
           name: wifeName,
-          nik: generateNIK('P', 99),
+          nik: generateUniqueNIK('P', 99),
           gender: 'P',
           religion: 'Islam',
           profession: getRandom(['IRT', 'Pedagang', 'Karyawan', 'Guru', 'Bidan']),
           address: address,
           placeOfBirth: 'Bogor',
-          dateOfBirth: motherDOB, 
-          relationship: 'ISTRI',                 // Penyesuaian Status Baru
-          phone: generatePhone(),                // Field HP
-          insurance: getRandom(insurances)       // Field Asuransi
+          dateOfBirth: generateDOBbyAge(fatherAge - getRandomInt(0, 5)), 
+          relationship: 'ISTRI',
+          phone: generatePhone(),
+          email: generateUniqueEmail(wifeName), 
+          insurance: getRandom(insurances)
         });
       }
 
-      // 3. ANAK-ANAK (Generasi Balita s/d Dewasa)
+      // 3. ANAK-ANAK (SEMUA UMUR SEKARANG PASTI DAPAT EMAIL)
       const childCount = getRandomInt(0, 4);
-      
       for (let j = 0; j < childCount; j++) {
-        // Logika Umur Anak: Harus lebih muda minimal 18 tahun dari Bapaknya
         const maxChildAge = fatherAge - 19;
-        const minChildAge = 0; // Baru lahir
-        
-        // Pastikan tidak error kalau bapaknya masih muda banget
         if (maxChildAge > 0) {
-            const childAge = getRandomInt(minChildAge, maxChildAge);
-            const childDOB = generateDOBbyAge(childAge);
-            
+            const childAge = getRandomInt(0, maxChildAge);
             const childGender = Math.random() > 0.5 ? 'L' : 'P';
-            const childName = `${getRandom(childGender === 'L' ? firstNamesL : firstNamesP)} ${getRandom(lastNames)}`;
+            const childName = generateUniqueName(childGender);
+            const childId = new mongoose.Types.ObjectId();
             
-            // Tentukan status pekerjaan berdasarkan umur
-            let profession = 'Belum Sekolah';
-            if (childAge >= 6 && childAge <= 18) profession = 'Pelajar';
-            else if (childAge > 18) profession = 'Mahasiswa';
-            else if (childAge > 23) profession = 'Karyawan';
+            let profession = childAge >= 6 && childAge <= 18 ? 'Pelajar' : childAge > 18 ? 'Mahasiswa' : childAge > 23 ? 'Karyawan' : 'Belum Sekolah';
 
             citizens.push({
+              _id: childId,
               familyId: familyId,
               name: childName,
-              nik: generateNIK(childGender, 99),
+              nik: generateUniqueNIK(childGender, 99),
               gender: childGender,
               religion: 'Islam',
               profession: profession,
               address: address,
               placeOfBirth: 'Bogor',
-              dateOfBirth: childDOB, 
-              relationship: `ANAK ${j + 1}`, // OTOMATIS ANAK 1, ANAK 2, ANAK 3
-              phone: childAge > 10 ? generatePhone() : '-', // Anak di bawah 10 thn biasanya tidak punya HP
+              dateOfBirth: generateDOBbyAge(childAge), 
+              relationship: `ANAK ${j + 1}`,
+              phone: childAge > 10 ? generatePhone() : '-',
+              email: generateUniqueEmail(childName), // <<< HILANG SUDAH BATASAN UMURNYA, SEMUA ANAK DAPAT EMAIL!
               insurance: getRandom(insurances)
             });
         }
@@ -183,14 +190,16 @@ const importData = async () => {
         if(fam && fam.totalTabungan > 0) {
             trashLogs.push({
                 familyId: fam._id,
+                citizenId: randomCitizen._id,
                 depositorName: randomCitizen.name,
-                trashType: getRandom(['Plastik', 'Kertas/Kardus', 'Logam/Besi', 'Kaca']),
+                trashType: getRandom(['Campuran', 'Botol Bersih', 'Kardus', 'Besi']), 
                 weight: getRandomInt(1, 5),
                 pricePerKg: 3000,
-                debit: getRandomInt(3000, 15000),
-                credit: 0,
+                deposit: getRandomInt(3000, 15000),
+                withdrawal: 0,
                 balance: fam.balance,
-                txnDate: new Date(new Date() - Math.random() * 1e10)
+                txnDate: new Date(new Date() - Math.random() * 1e10),
+                operator: "Admin RT"
             });
         }
     }
@@ -200,7 +209,7 @@ const importData = async () => {
     await TrashBank.insertMany(trashLogs);
 
     console.log(`✅ SUKSES!`.green.bold);
-    console.log(`Semua warga sudah punya HP, Asuransi, Tanggal Lahir, dan Status Anak Urut.`.white);
+    console.log(`Data Unik Terbuat: ${generatedNames.size} Nama, ${generatedNIKs.size} NIK, ${generatedEmails.size} Email.`.white);
     console.log(`Total Warga Terbuat: ${citizens.length}`.cyan);
     
     process.exit();
