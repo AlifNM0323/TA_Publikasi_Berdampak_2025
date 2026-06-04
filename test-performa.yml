@@ -1,0 +1,18 @@
+config:
+  target: "http://localhost:4000"
+  phases:
+    - duration: 30
+      arrivalRate: 10
+      name: "Beban Ringan SiRT 14"
+  headers:
+    Content-Type: "application/json"
+    Apollo-Require-Preflight: "true"
+
+scenarios:
+  - name: "Ambil Data Citizens"
+    flow:
+      - post:
+          url: "/graphql"
+          json:
+            # Perhatikan: 'nama' sudah diganti jadi 'name' sesuai permintaan server
+            query: "query { citizens { id nik name } }"
