@@ -23,5 +23,5 @@ const suratSchema = new mongoose.Schema({
   }
 });
 
-// 👇 INI KUNCI PERBAIKANNYA: Menggunakan export default
+
 export default mongoose.model('Surat', suratSchema);

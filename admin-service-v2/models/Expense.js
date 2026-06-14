@@ -8,5 +8,5 @@ const expenseSchema = new mongoose.Schema({
   notes: String
 });
 
-// PASTIKAN PAKAI EXPORT DEFAULT:
+
 export default mongoose.model('Expense', expenseSchema);

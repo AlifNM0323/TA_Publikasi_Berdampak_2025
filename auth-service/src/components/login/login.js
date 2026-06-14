@@ -1,10 +1,10 @@
 onCompleted: (data) => {
   const token = data.login.token;
-  // Ambil username dari dalam objek user
+
   const userName = data.login.user.username; 
   
   localStorage.setItem('authToken', token);
-  localStorage.setItem('user', userName); // Simpan nama untuk Navbar
+  localStorage.setItem('user', userName); 
   
   setToken(token);
   

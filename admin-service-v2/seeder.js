@@ -56,7 +56,7 @@ const generateUniqueName = (gender) => {
 const generateUniqueEmail = (name) => {
   let email;
   let attempt = 0;
-  const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, ''); // Hapus spasi
+  const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, ''); 
   do {
     email = attempt === 0 ? `${cleanName}@warga.com` : `${cleanName}${attempt}@warga.com`;
     attempt++;
@@ -109,7 +109,7 @@ const importData = async () => {
         qrCode: `RT14-${noKK}`
       });
 
-      // 1. KEPALA KELUARGA (PASTI DAPAT EMAIL)
+      // KEPALA KELUARGA 
       const fatherAge = getRandomInt(25, 75);
       const fatherId = new mongoose.Types.ObjectId();
       citizens.push({
@@ -129,7 +129,7 @@ const importData = async () => {
         insurance: getRandom(insurances)
       });
 
-      // 2. ISTRI (PASTI DAPAT EMAIL)
+      // ISTRI
       if (Math.random() > 0.1) {
         const wifeName = generateUniqueName('P');
         const wifeId = new mongoose.Types.ObjectId();
@@ -151,7 +151,7 @@ const importData = async () => {
         });
       }
 
-      // 3. ANAK-ANAK (SEMUA UMUR SEKARANG PASTI DAPAT EMAIL)
+      // ANAK-ANAK
       const childCount = getRandomInt(0, 4);
       for (let j = 0; j < childCount; j++) {
         const maxChildAge = fatherAge - 19;
@@ -176,7 +176,7 @@ const importData = async () => {
               dateOfBirth: generateDOBbyAge(childAge), 
               relationship: `ANAK ${j + 1}`,
               phone: childAge > 10 ? generatePhone() : '-',
-              email: generateUniqueEmail(childName), // <<< HILANG SUDAH BATASAN UMURNYA, SEMUA ANAK DAPAT EMAIL!
+              email: generateUniqueEmail(childName), 
               insurance: getRandom(insurances)
             });
         }

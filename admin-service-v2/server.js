@@ -34,7 +34,7 @@ const startApp = async () => {
     expressMiddleware(server)
   );
 
-  // --- PERUBAHAN DI SINI: GUNAKAN PORT 4001 ---
+
   await new Promise((resolve) => httpServer.listen({ port: 4001, host: '0.0.0.0' }, resolve));
   console.log(`🚀 Admin Service V2 Siap di: http://localhost:4001/graphql`);
 };

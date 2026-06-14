@@ -1,5 +1,3 @@
-
-
 import sharp from 'sharp';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import Citizen from './models/Citizen.js';
@@ -13,7 +11,7 @@ import Report from './models/Report.js';
 
 // --- TAMBAHAN BARU: MODUL SURAT ---
 import Surat from './models/Surat.js'; 
-// ----------------------------------
+
 
 // ✅ INISIALISASI GEMINI AI 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -161,9 +159,9 @@ export const resolvers = {
 
     updateFamilyWaste: async (_, { familyId, totalTabungan }) => await Family.findByIdAndUpdate(familyId, { totalTabungan }, { new: true }),
 
-    // =========================================================================
+
     // ✅ AI SCANNER: MENGGUNAKAN GOOGLE GEMINI
-    // =========================================================================
+
     processScanAll: async (_, { imageBase64 }) => {
       try {
         console.log("🚀 Memulai AI Vision Scan via Gemini...");
@@ -197,7 +195,7 @@ export const resolvers = {
           }).save();
         }
 
-        // VALIDASI INTEGRITAS: Hanya insert jika NIK belum ada
+        
         const citizenExists = await Citizen.findOne({ nik });
         if (!citizenExists) {
           await new Citizen({
@@ -219,7 +217,7 @@ export const resolvers = {
     updateReportStatus: async (_, { id, status, response }) => await Report.findByIdAndUpdate(id, { $set: { status, response } }, { new: true }),
     deleteReport: async (_, { id }) => { await Report.findByIdAndDelete(id); return "Laporan berhasil dihapus."; },
 
-    // --- TAMBAHAN BARU: MUTATION SURAT ---
+
     ajukanSurat: async (_, { citizenId, jenisSurat, keperluan }) => {
       try {
         const suratBaru = new Surat({ 
@@ -245,10 +243,10 @@ export const resolvers = {
       await Surat.findByIdAndDelete(id);
       return "Data pengajuan surat berhasil dihapus.";
     }
-    // -------------------------------------
+  
   },
 
-  // 👇 RESOLVERS UNTUK RELASI DATA 👇
+  //  RESOLVERS UNTUK RELASI DATA 
   Family: {
     members: async (parent) => await Citizen.find({ familyId: parent._id }).sort({ createdAt: 1 }),
     payments: async (parent) => await Contribution.find({ familyId: parent._id })
@@ -271,9 +269,9 @@ export const resolvers = {
   Contribution: { family: async (parent) => await Family.findById(parent.familyId) },
   Report: { citizen: async (parent) => await Citizen.findById(parent.citizenId) },
 
-  // --- TAMBAHAN BARU: RELASI SURAT ---
+
   Surat: { 
     citizen: async (parent) => await Citizen.findById(parent.citizenId) 
   }
-  // -----------------------------------
+
 };

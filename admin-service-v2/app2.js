@@ -1,20 +1,20 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const connectToDB = require('./config/db'); // Koneksi ke MongoDB
-const citizenRoutes = require('./routes/citizens'); // Rute citizen
+const connectToDB = require('./config/db'); 
+const citizenRoutes = require('./routes/citizens'); 
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(express.json()); // Middleware untuk parsing JSON request body
-app.use(cors()); // Middleware untuk mengatasi CORS
+app.use(express.json()); 
+app.use(cors()); 
 
 // Koneksi ke MongoDB
 connectToDB();
 
 // Menggunakan rute citizen
-app.use('/citizens', citizenRoutes); // Rute untuk citizen
+app.use('/citizens', citizenRoutes);
 
 // Rute dasar untuk memastikan server berjalan
 app.get('/', (req, res) => {

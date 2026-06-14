@@ -10,5 +10,5 @@ const contributionSchema = new mongoose.Schema({
   notes: String
 });
 
-// UBAH BAGIAN INI:
+
 export default mongoose.model('Contribution', contributionSchema);

@@ -14,5 +14,5 @@ scenarios:
       - post:
           url: "/graphql"
           json:
-            # Perhatikan: 'nama' sudah diganti jadi 'name' sesuai permintaan server
+            
             query: "query { citizens { id nik name } }"

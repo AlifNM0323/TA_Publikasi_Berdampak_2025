@@ -2,7 +2,7 @@ import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import { buildSubgraphSchema } from '@apollo/subgraph'; // <--- PASTIKAN INI SUBGRAPH
+import { buildSubgraphSchema } from '@apollo/subgraph'; 
 import { parse } from 'graphql';
 import { typeDefs } from './type.js';
 import { resolvers } from './resolvers.js';
@@ -17,7 +17,7 @@ const startAuth = async () => {
     });
 
     const { url } = await startStandaloneServer(server, {
-      listen: { port: 4002, host: '0.0.0.0' }, // <--- PORT 4002
+      listen: { port: 4002, host: '0.0.0.0' }, 
     });
     console.log(`✅ Auth Service SiRT 14 SIAP di: ${url}`);
   } catch (err) {

@@ -6,24 +6,24 @@ async function kirimTes() {
   console.log("--- MEMULAI TES PENGIRIMAN EMAIL ---");
   console.log("Menggunakan Email:", process.env.EMAIL_USER);
 
-  // 1. Konfigurasi Transport
+  
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS // Pastikan ini pakai App Password 16 digit
+      pass: process.env.EMAIL_PASS 
     }
   });
 
-  // 2. Setting Isi Pesan
+  
   const mailOptions = {
     from: process.env.EMAIL_USER,
-    to: process.env.EMAIL_USER, // Kirim ke diri sendiri dulu buat ngetes
+    to: process.env.EMAIL_USER, 
     subject: 'TES KONEKSI EMAIL SiRT 14',
     text: 'Halo kawan Alip! Jika kamu menerima email ini, berarti settingan email di .env sudah BENAR.'
   };
 
-  // 3. Eksekusi
+
   try {
     console.log("Sedang mengirim... mohon tunggu...");
     const info = await transporter.sendMail(mailOptions);

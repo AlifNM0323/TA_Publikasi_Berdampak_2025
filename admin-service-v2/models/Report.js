@@ -8,7 +8,7 @@ const ReportSchema = new mongoose.Schema({
   },
   category: { 
     type: String, 
-    required: true // Contoh: 'Infrastruktur', 'Keamanan', 'Kebersihan', 'Sosial'
+    required: true 
   },
   title: { 
     type: String, 
@@ -19,17 +19,17 @@ const ReportSchema = new mongoose.Schema({
     required: true 
   },
   imageBase64: { 
-    type: String, // Untuk menyimpan foto bukti laporan (opsional)
+    type: String, 
     default: null
   },
   status: { 
     type: String, 
     enum: ['PENDING', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'], 
-    default: 'PENDING' // Status awal selalu menunggu tindakan
+    default: 'PENDING' 
   },
   response: { 
     type: String, 
-    default: '-' // Tanggapan/balasan dari RT
+    default: '-' 
   },
   reportDate: { 
     type: Date, 
